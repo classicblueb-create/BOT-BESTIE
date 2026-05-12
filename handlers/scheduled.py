@@ -20,6 +20,7 @@ from services.data import (
     fetch_real_time_news, fetch_world_indices, fetch_gold_price,
     fetch_gold_price_detail, fetch_brief_price, fetch_trending_equities,
     fetch_top_movers, fetch_thai_gold_price, fetch_symbol_news,
+    fetch_most_actives,
 )
 
 from services.ai import (

@@ -9,7 +9,7 @@ import time
 import requests
 
 OPENROUTER_URL   = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_MODEL    = "google/gemma-4-26b-a4b-it:free"
+DEFAULT_MODEL    = "google/gemma-4-31b-it:free"
 SYSTEM_PERSONA   = (
     "คุณคือ Bestie Bot US 🤖 — ผู้เชี่ยวชาญด้านการเงินและการลงทุนทุกรูปแบบ ตอบคำถามได้ครอบคลุม "
     "ทั้งหุ้น US, ราคาน้ำมัน, ทองคำโลก, ทองสมาคมไทย, คริปโตเคอร์เรนซี (Bitcoin ฯลฯ) "

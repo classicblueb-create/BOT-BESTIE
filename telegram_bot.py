@@ -44,7 +44,7 @@ from handlers.commands import (
     cmd_start, cmd_help, cmd_news, cmd_market,
     cmd_gold, cmd_thaigold, cmd_trending, cmd_actives,
     cmd_sector, cmd_etf, cmd_crypto, cmd_sniper,
-    cmd_retire, cmd_mindset, cmd_weekly,
+    cmd_retire, cmd_mindset, cmd_weekly, cmd_swing,
     callback_handler,
 )
 from handlers.scheduled import (
@@ -91,6 +91,7 @@ def main() -> None:
     app.add_handler(CommandHandler("etf",      cmd_etf))
     app.add_handler(CommandHandler("crypto",   cmd_crypto))
     app.add_handler(CommandHandler("sniper",   cmd_sniper))
+    app.add_handler(CommandHandler("swing",    cmd_swing))
     app.add_handler(CommandHandler("retire",   cmd_retire))
     app.add_handler(CommandHandler("mindset",  cmd_mindset))
     app.add_handler(CommandHandler("weekly",   cmd_weekly))

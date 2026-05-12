@@ -19,7 +19,7 @@ from services.ai import (
     build_gold_snapshot_prompt, build_gold_signal_prompt,
     build_sniper_prompt, build_sector_prompt, build_etf_prompt,
     build_retirement_prompt, build_crypto_prompt,
-    build_new_high_prompt,
+    build_new_high_prompt, build_swing_trade_prompt,
 )
 
 log = logging.getLogger(__name__)
@@ -128,6 +128,7 @@ async def cmd_help(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         "/etf — ETF แนะนำ\n"
         "/crypto — วิเคราะห์ Crypto\n"
         "/sniper `SYMBOL` — Sniper Signal\n"
+        "/swing `SYMBOL` — แผนเทรดสั้น 3-5 วัน\n"
         "/retire — แผนเกษียณ\n"
         "/mindset — Wealth Mindset Quote\n"
         "/weekly — Weekly Outlook\n"
@@ -282,6 +283,25 @@ async def _do_sniper(update: Update, symbol: str) -> None:
     prompt    = build_sniper_prompt(symbol, price_str)
     ai_txt    = call_openrouter(prompt)
     await send(update, f"🎯 *Sniper Signal: {symbol}*\n💲 ราคา: {price_str}\n\n{ai_txt}")
+
+
+# ── /swing ─────────────────────────────────────────────────────────────────────
+
+async def cmd_swing(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not ctx.args:
+        await send(update, "⚠️ กรุณาระบุชื่อหุ้น เช่น `/swing TSLA` หรือ `/swing PLUG`")
+        return
+    
+    symbol = ctx.args[0].upper()
+    await send(update, f"⏳ วางแผน Swing Trade 3-5 วัน: *{symbol}*...")
+    price_str = fetch_brief_price(symbol)
+    if price_str == "N/A":
+        await send(update, f"⚠️ ไม่พบข้อมูลราคาของหุ้น {symbol}")
+        return
+        
+    prompt = build_swing_trade_prompt(symbol, price_str)
+    ai_txt = call_openrouter(prompt)
+    await send(update, f"⚡ *Swing Trade Plan: {symbol}*\n💲 ราคาล่าสุด: {price_str}\n\n{ai_txt}")
 
 
 # ── /retire ────────────────────────────────────────────────────────────────────

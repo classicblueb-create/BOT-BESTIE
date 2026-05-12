@@ -20,6 +20,7 @@ from services.ai import (
     build_sniper_prompt, build_sector_prompt, build_etf_prompt,
     build_retirement_prompt, build_crypto_prompt,
     build_new_high_prompt, build_swing_trade_prompt,
+    build_auto_swing_prompt,
 )
 
 log = logging.getLogger(__name__)
@@ -289,9 +290,29 @@ async def _do_sniper(update: Update, symbol: str) -> None:
 
 async def cmd_swing(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not ctx.args:
-        await send(update, "⚠️ กรุณาระบุชื่อหุ้น เช่น `/swing TSLA` หรือ `/swing PLUG`")
+        # โหมด Auto-recommend: คัดหุ้น > $20 ป้องกัน Penny
+        await send(update, "⏳ กำลังคัดกรองหุ้นพื้นฐานดีและจัดแผน Swing Trade ให้...")
+        
+        candidates = fetch_most_actives() + fetch_trending_equities()
+        # Filter price >= 20, remove duplicates
+        filtered = {}
+        for stock in candidates:
+            sym = stock.get("symbol", "")
+            price = stock.get("price", 0)
+            if sym and price >= 20.0:
+                filtered[sym] = f"{sym}: ${price:,.2f} ({stock.get('pct', 0):+.2f}%)"
+                
+        if not filtered:
+            await send(update, "⚠️ ไม่พบหุ้นพื้นฐานตรงเกณฑ์ในขณะนี้")
+            return
+            
+        candidates_str = "\n".join(list(filtered.values())[:15]) # ส่งไปให้ AI เลือกจาก 15 ตัวท็อป
+        prompt = build_auto_swing_prompt(candidates_str)
+        ai_txt = call_openrouter(prompt)
+        await send(update, f"⚡ *Auto Swing Trade Recommend*\n\n{ai_txt}")
         return
     
+    # โหมดระบุหุ้น
     symbol = ctx.args[0].upper()
     await send(update, f"⏳ วางแผน Swing Trade 3-5 วัน: *{symbol}*...")
     price_str = fetch_brief_price(symbol)

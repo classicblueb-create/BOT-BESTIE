@@ -22,4 +22,5 @@ logs/
 
 # OS
 .DS_Store
-Thumbs.db
+# Data
+watchlist.json

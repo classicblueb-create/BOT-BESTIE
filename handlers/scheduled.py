@@ -19,8 +19,9 @@ from telegram.ext import ContextTypes
 from services.data import (
     fetch_real_time_news, fetch_world_indices, fetch_gold_price,
     fetch_gold_price_detail, fetch_brief_price, fetch_trending_equities,
-    fetch_top_movers, fetch_thai_gold_price,
+    fetch_top_movers, fetch_thai_gold_price, fetch_symbol_news,
 )
+
 from services.ai import (
     call_openrouter,
     build_morning_prompt, build_evening_prompt, build_pre_market_prompt,
@@ -28,7 +29,12 @@ from services.ai import (
     build_wealth_mindset_prompt, build_weekly_outlook_prompt,
     build_economic_calendar_prompt, build_sniper_prompt, build_new_high_prompt,
     build_sentiment_alert_prompt, build_auto_swing_prompt,
+    build_market_pulse_prompt, build_bestie_insight_prompt,
+    build_personal_watchlist_report_prompt,
+    INSIGHT_PILLARS,
 )
+
+
 
 log = logging.getLogger(__name__)
 
@@ -223,8 +229,13 @@ async def job_economic_calendar(ctx: ContextTypes.DEFAULT_TYPE) -> None:
 async def job_sniper_auto(ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if is_weekend():
         return
+    _clear_alerts_if_new_day()
     log.info("🎯 Auto Sniper check")
     for symbol in SNIPER_SYMBOLS[:5]:
+        # ถ้าวันนี้เตือนไปแล้ว ข้ามไปเลย จะได้ไม่เด้งตลอด
+        if symbol in _alerted_today:
+            continue
+            
         try:
             price_str = fetch_brief_price(symbol)
             if price_str == "N/A":
@@ -235,6 +246,11 @@ async def job_sniper_auto(ctx: ContextTypes.DEFAULT_TYPE) -> None:
             if any(kw in ai_txt.lower() for kw in ["ซื้อ", "buy", "breakout", "strong"]):
                 msg = (f"🎯 *Auto Sniper: {symbol}*\n💲 {price_str}\n\n{ai_txt}")
                 await _broadcast(ctx, msg)
+                _alerted_today.add(symbol)
+                # ส่งแค่ครั้งละ 1 ตัวพอ จะได้ไม่สแปมเยอะ
+                break
+        except Exception as e:
+            log.error("Sniper auto error %s: %s", symbol, e)
         except Exception as e:
             log.error("Sniper auto error %s: %s", symbol, e)
 
@@ -328,5 +344,90 @@ async def job_auto_swing_broadcast(ctx: ContextTypes.DEFAULT_TYPE) -> None:
         f"{ai_txt}"
     )
     await _broadcast(ctx, msg)
+
+
+# ── Market Pulse (Scheduled) ──────────────────────────────────────────────────
+
+async def job_market_pulse(ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if is_weekend():
+        return
+    log.info("🩺 Market Pulse scheduled broadcast")
+    
+    news = fetch_real_time_news(10)
+    trending = fetch_trending_equities()
+    actives = fetch_most_actives()
+    
+    spy = fetch_brief_price("SPY")
+    qqq = fetch_brief_price("QQQ")
+    dia = fetch_brief_price("DIA")
+    
+    trending_str = "\n".join([f"• {s['symbol']}: ${s['price']:,.2f} ({s['pct']:+.2f}%)" for s in trending[:5]])
+    actives_str = "\n".join([f"• {s['symbol']}: ${s['price']:,.2f}" for s in actives[:5]])
+    
+    prompt = build_market_pulse_prompt(news, trending_str, actives_str, spy, qqq, dia)
+    ai_txt = call_openrouter(prompt)
+    await _broadcast(ctx, f"🩺 **Market Pulse — Bestie Bot US**\n\n{ai_txt}")
+
+
+# ── Bestie Insight Daily (Scheduled) ──────────────────────────────────────────
+
+async def job_bestie_insight(ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if is_weekend():
+        return
+    log.info("🌟 Bestie Insight Daily broadcast")
+    
+    # ดึงข้อมูลตลาดสดประกอบ
+    news = fetch_real_time_news(5)
+    spy = fetch_brief_price("SPY")
+    qqq = fetch_brief_price("QQQ")
+    gold = fetch_brief_price("GC=F")
+    btc = fetch_brief_price("BTC-USD")
+    movers = fetch_top_movers()
+    movers_str = "\n".join([f"{s['symbol']}: {s['pct']:+.2f}%" for s in movers[:5]])
+    
+    # เลือก Pillar ตามวัน (0=Mon, 1=Tue, ...)
+    dow = datetime.now(TZ_BKK).weekday()
+    pillar = INSIGHT_PILLARS[dow % len(INSIGHT_PILLARS)]
+    
+    prompt = build_bestie_insight_prompt(
+        pillar["prompt"], pillar["label"],
+        news, spy, qqq, gold, btc, movers_str
+    )
+    ai_txt = call_openrouter(prompt)
+    await _broadcast(ctx, f"🌟 **Bestie Insight Daily: {pillar['label']}**\n\n{ai_txt}")
+
+
+# ── Watchlist Personal Report (Scheduled 18:00 BKK) ──────────────────────────
+
+async def job_watchlist_personal_report(ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if is_weekend():
+        return
+    log.info("📌 Watchlist Personal Report scheduled")
+    from handlers.commands import load_watchlists
+    
+    watchlists = load_watchlists()
+    for chat_id_str, symbols in watchlists.items():
+        if not symbols:
+            continue
+        try:
+            chat_id = int(chat_id_str)
+            symbols_news_data = []
+            for sym in symbols:
+                price = fetch_brief_price(sym)
+                news = fetch_symbol_news(sym, limit=3)
+                symbols_news_data.append(f"• {sym} ({price}):\n{news}")
+            
+            data_str = "\n\n".join(symbols_news_data)
+            prompt = build_personal_watchlist_report_prompt(data_str)
+            ai_txt = call_openrouter(prompt)
+            
+            msg = (
+                "📌 **Daily Watchlist Update**\n"
+                "สรุปข่าวและแนวโน้มสำหรับหุ้นที่คุณสนใจวันนี้จ้า...\n\n"
+                f"{ai_txt}"
+            )
+            await ctx.bot.send_message(chat_id, msg, parse_mode="Markdown")
+        except Exception as e:
+            log.error("Error in personal watchlist report for %s: %s", chat_id_str, e)
 
 

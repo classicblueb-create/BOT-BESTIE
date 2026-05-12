@@ -24,7 +24,7 @@ Schedule (Bangkok time UTC+7, weekdays only):
   20:00  Pre-Market Alert
   21:30  Evening Brief
   22:00  Gold Signal #2
-  Every 2 h  Sniper Auto-check
+  Every 1 h  Sniper Auto-check
   Every 3 h  New High Scanner
 """
 from __future__ import annotations
@@ -47,15 +47,20 @@ from handlers.commands import (
     cmd_gold, cmd_thaigold, cmd_trending, cmd_actives,
     cmd_sector, cmd_etf, cmd_crypto, cmd_sniper,
     cmd_retire, cmd_mindset, cmd_weekly, cmd_swing,
+    cmd_pulse, cmd_watchlist, cmd_add, cmd_del,
     callback_handler, handle_text,
 )
+
 from handlers.scheduled import (
     job_morning_brief, job_evening_brief, job_pre_market,
     job_gold_snapshot, job_gold_signal, job_wealth_mindset,
     job_weekly_outlook, job_economic_calendar,
     job_sniper_auto, job_new_high, job_sentiment_scanner,
-    job_auto_swing_broadcast,
+    job_auto_swing_broadcast, job_bestie_insight, job_market_pulse,
+    job_watchlist_personal_report,
 )
+
+
 
 # ── Bootstrap ──────────────────────────────────────────────────────────────────
 
@@ -98,6 +103,10 @@ def main() -> None:
     app.add_handler(CommandHandler("retire",   cmd_retire))
     app.add_handler(CommandHandler("mindset",  cmd_mindset))
     app.add_handler(CommandHandler("weekly",   cmd_weekly))
+    app.add_handler(CommandHandler("pulse",    cmd_pulse))
+    app.add_handler(CommandHandler("watchlist",cmd_watchlist))
+    app.add_handler(CommandHandler("add",      cmd_add))
+    app.add_handler(CommandHandler("del",      cmd_del))
 
     # ── Text handler (General Chat) ───────────────────────────────────────────
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
@@ -114,15 +123,19 @@ def main() -> None:
     jq.run_daily(job_economic_calendar,_bkk(8, 30),  name="economic_calendar")
     jq.run_daily(job_gold_snapshot,    _bkk(9,  0),  name="gold_snapshot_am")
     jq.run_daily(job_gold_signal,      _bkk(10, 0),  name="gold_signal_am")
+    jq.run_daily(job_market_pulse,     _bkk(11, 0),  name="market_pulse_am")
+    jq.run_daily(job_bestie_insight,   _bkk(12, 0),  name="bestie_insight")
     jq.run_daily(job_auto_swing_broadcast, _bkk(15, 0), name="auto_swing_pm")
     jq.run_daily(job_gold_snapshot,    _bkk(16, 0),  name="gold_snapshot_pm")
+    jq.run_daily(job_watchlist_personal_report, _bkk(18, 0), name="watchlist_personal_am")
+    jq.run_daily(job_market_pulse,     _bkk(19, 0),  name="market_pulse_pm")
     jq.run_daily(job_pre_market,       _bkk(20, 0),  name="pre_market")
     jq.run_daily(job_evening_brief,    _bkk(21, 30), name="evening_brief")
     jq.run_daily(job_gold_signal,      _bkk(22, 0),  name="gold_signal_pm")
 
     # Repeating jobs (every N seconds)
     jq.run_repeating(job_sentiment_scanner, interval=1800, first=60, name="sentiment_scanner") # 30 mins
-    jq.run_repeating(job_sniper_auto, interval=7200,  first=300,  name="sniper_auto")
+    jq.run_repeating(job_sniper_auto, interval=3600,  first=300,  name="sniper_auto")  # 1 hour
     jq.run_repeating(job_new_high,    interval=10800, first=600,  name="new_high")
 
     log.info("🚀 Bestie Bot US — Telegram started (polling)")

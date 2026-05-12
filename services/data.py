@@ -233,3 +233,21 @@ def fetch_real_time_news(limit: int = 15) -> str:
     if not top:
         return "ไม่พบข่าวใหม่ในขณะนี้"
     return "\n".join(f"{i+1}. {n['title']}" for i, n in enumerate(top))
+
+
+def fetch_symbol_news(symbol: str, limit: int = 5) -> str:
+    """Fetch latest news for a specific stock symbol via Yahoo RSS."""
+    try:
+        url = f"https://finance.yahoo.com/rss/headline?s={requests.utils.quote(symbol)}"
+        res = requests.get(url, headers=YAHOO_HEADERS, timeout=8)
+        root = ET.fromstring(res.text)
+        news = []
+        for item in root.iter("item"):
+            title = (item.findtext("title") or "").strip()
+            if title:
+                news.append(title)
+            if len(news) >= limit:
+                break
+        return "\n".join(news) if news else "No specific news found."
+    except Exception:
+        return "N/A"

@@ -5,8 +5,9 @@ All Telegram command/callback handlers for Bestie Bot US
 from __future__ import annotations
 
 import os
+import re
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from services.data import (
@@ -20,13 +21,36 @@ from services.ai import (
     build_sniper_prompt, build_sector_prompt, build_etf_prompt,
     build_retirement_prompt, build_crypto_prompt,
     build_new_high_prompt, build_swing_trade_prompt,
-    build_auto_swing_prompt,
+    build_auto_swing_prompt, build_stock_deep_analysis_prompt,
+    build_market_pulse_prompt, build_watchlist_summary_prompt,
 )
+import json
+
 
 log = logging.getLogger(__name__)
 
 # Dictionary to store conversation history per chat_id
 USER_HISTORY = {}
+USER_SWING_ROTATION = {}
+
+WATCHLIST_FILE = "watchlist.json"
+
+def load_watchlists() -> dict[str, list[str]]:
+    if os.path.exists(WATCHLIST_FILE):
+        try:
+            with open(WATCHLIST_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            log.error(f"Error loading watchlist: {e}")
+            return {}
+    return {}
+
+def save_watchlists(data: dict[str, list[str]]):
+    try:
+        with open(WATCHLIST_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        log.error(f"Error saving watchlist: {e}")
 
 # ── Sector definitions ─────────────────────────────────────────────────────────
 
@@ -67,6 +91,55 @@ CRYPTO_SYMBOLS: dict[str, str] = {
 
 # ── Utility ────────────────────────────────────────────────────────────────────
 
+def _try_detect_stock_symbol(text: str) -> str | None:
+    """Force check Yahoo Finance to detect if input is a valid stock/crypto symbol."""
+    clean = text.strip()
+    if not clean or len(clean) > 12:  # Don't check long sentences
+        return None
+    
+    # 1. Alias mapping for common names
+    COMPANY_MAP = {
+        "apple": "AAPL", "nvidia": "NVDA", "microsoft": "MSFT",
+        "google": "GOOGL", "alphabet": "GOOGL", "amazon": "AMZN",
+        "tesla": "TSLA", "meta": "META", "facebook": "META",
+        "netflix": "NFLX", "amd": "AMD", "intel": "INTC",
+        "coinbase": "COIN", "palantir": "PLTR", "disney": "DIS",
+        "paypal": "PYPL", "shopify": "SHOP", "uber": "UBER",
+        "airbnb": "ABNB", "spotify": "SPOT", "snap": "SNAP",
+        "roblox": "RBLX", "gamestop": "GME", "robinhood": "HOOD",
+        "boeing": "BA", "walmart": "WMT", "costco": "COST",
+        "starbucks": "SBUX", "nike": "NKE", "coca-cola": "KO",
+        "pepsi": "PEP", "johnson": "JNJ", "pfizer": "PFE",
+        "moderna": "MRNA", "sea": "SE", "grab": "GRAB",
+        "indi": "INDI", "eose": "EOSE", "mstr": "MSTR",
+        "bitcoin": "BTC-USD", "ethereum": "ETH-USD", "solana": "SOL-USD",
+        "xrp": "XRP-USD", "dogecoin": "DOGE-USD", "bnb": "BNB-USD",
+        "บิทคอย": "BTC-USD", "อีเทอร์เรียม": "ETH-USD",
+    }
+    
+    lower = clean.lower()
+    if lower in COMPANY_MAP:
+        return COMPANY_MAP[lower]
+        
+    # 2. Check raw input as Symbol
+    sym = clean.upper()
+    price = fetch_brief_price(sym)
+    if price != "N/A":
+        return sym
+        
+    # 3. Check with -USD (common for crypto) if it's 3-5 letters
+    if 3 <= len(clean) <= 5:
+        price_crypto = fetch_brief_price(sym + "-USD")
+        if price_crypto != "N/A":
+            return sym + "-USD"
+
+    return None
+
+
+def _yahoo_chart_link(symbol: str) -> str:
+    """Generate a Yahoo Finance chart URL."""
+    return f"https://finance.yahoo.com/quote/{symbol}/chart/"
+
 async def send(update: Update, text: str, reply_markup=None) -> None:
     """Send (or reply) with automatic MarkdownV2 escape fallback."""
     # use reply if inside a message, else send to chat
@@ -82,39 +155,36 @@ async def send(update: Update, text: str, reply_markup=None) -> None:
 
 # ── /start ─────────────────────────────────────────────────────────────────────
 
+MAIN_MENU_KEYBOARD = ReplyKeyboardMarkup(
+    [
+        ["📰 ข่าวล่าสุด", "📊 ราคาตลาด"],
+        ["🥇 วิเคราะห์ทองคำ", "🌏 ราคาทองไทย"],
+        ["📈 หุ้น Trending", "🔥 Most Active"],
+        ["🎯 Sniper Signal", "⚡ Swing Trade"],
+        ["ℹ️ เมนูทั้งหมด (/help)"]
+    ],
+    resize_keyboard=True,
+    is_persistent=True
+)
+
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     kb = [
         [
-            InlineKeyboardButton("📰 ข่าวล่าสุด",        callback_data="news"),
-            InlineKeyboardButton("📊 ราคาตลาด",           callback_data="market"),
-        ],
-        [
-            InlineKeyboardButton("🥇 Gold",               callback_data="gold"),
-            InlineKeyboardButton("📈 Trending",            callback_data="trending"),
-        ],
-        [
-            InlineKeyboardButton("🔥 Most Active",         callback_data="actives"),
             InlineKeyboardButton("🎯 Sector",              callback_data="sector_menu"),
-        ],
-        [
             InlineKeyboardButton("💰 ETF",                 callback_data="etf_menu"),
-            InlineKeyboardButton("₿ Crypto",              callback_data="crypto_menu"),
         ],
         [
-            InlineKeyboardButton("🎯 Sniper Signal",       callback_data="sniper_menu"),
+            InlineKeyboardButton("₿ Crypto",              callback_data="crypto_menu"),
             InlineKeyboardButton("🏖 Retirement Plan",     callback_data="retire_start"),
         ],
         [
             InlineKeyboardButton("💡 Wealth Mindset",      callback_data="mindset"),
             InlineKeyboardButton("📅 Weekly Outlook",      callback_data="weekly"),
         ],
-        [
-            InlineKeyboardButton("🌏 Thai Gold",           callback_data="thaigold"),
-            InlineKeyboardButton("ℹ️ Help",                callback_data="help"),
-        ],
     ]
+    await send(update, "เปิดใช้งานแถบเมนูด้านล่างเรียบร้อยครับ! 👇\n(คุณสามารถกดปุ่มด้านล่างเพื่อสั่งงานได้ทันที)", reply_markup=MAIN_MENU_KEYBOARD)
     await send(update,
-               "*🤖 Bestie Bot US v3.24*\nเพื่อนนักลงทุน US ของคุณ 🚀\n\nเลือกเมนู:",
+               "*🤖 Bestie Bot US v3.24*\nเพื่อนนักลงทุน US ของคุณ 🚀\n\nฟีเจอร์เพิ่มเติม:",
                InlineKeyboardMarkup(kb))
 
 
@@ -309,10 +379,36 @@ async def cmd_swing(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             await send(update, "⚠️ ไม่พบหุ้นพื้นฐานตรงเกณฑ์ในขณะนี้")
             return
             
-        candidates_str = "\n".join(list(filtered.values())[:15]) # ส่งไปให้ AI เลือกจาก 15 ตัวท็อป
-        prompt = build_auto_swing_prompt(candidates_str)
+        chat_id = update.effective_chat.id
+        rot = USER_SWING_ROTATION.get(chat_id, 0)
+        filtered_list = list(filtered.values())
+        
+        # รอบ 1: 7 ตัว, รอบ 2: 5 ตัว, รอบ 3: 10 ตัว
+        counts = [7, 5, 10]
+        num_to_recommend = counts[rot]
+        
+        # แต่ละรอบดึงผู้สมัครมาให้ AI เลือกจาก 20 ตัวถัดไปเรื่อยๆ
+        start_idx = rot * 20
+        end_idx = start_idx + 20
+        
+        if start_idx >= len(filtered_list):
+            rot = 0
+            start_idx = 0
+            end_idx = 20
+            num_to_recommend = counts[0]
+            
+        chunk = filtered_list[start_idx:end_idx]
+        if len(chunk) < num_to_recommend:
+            chunk = filtered_list[:20]
+            rot = 0
+            num_to_recommend = counts[0]
+            
+        USER_SWING_ROTATION[chat_id] = (rot + 1) % 3
+            
+        candidates_str = "\n".join(chunk)
+        prompt = build_auto_swing_prompt(candidates_str, num_stocks=num_to_recommend)
         ai_txt = call_openrouter(prompt)
-        await send(update, f"⚡ *Auto Swing Trade Recommend*\n\n{ai_txt}")
+        await send(update, ai_txt)
         return
     
     # โหมดระบุหุ้น
@@ -376,11 +472,139 @@ async def cmd_weekly(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await send(update, f"📅 *Weekly Outlook US*\n\n{ai_txt}")
 
 
+# ── /pulse (Market Pulse) ──────────────────────────────────────────────────────
+
+async def cmd_pulse(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    await send(update, "🩺 กำลังตรวจชีพจรตลาด (Market Pulse)...")
+    news = fetch_real_time_news(10)
+    trending = fetch_trending_equities()
+    actives = fetch_most_actives()
+    
+    spy = fetch_brief_price("SPY")
+    qqq = fetch_brief_price("QQQ")
+    dia = fetch_brief_price("DIA")
+    
+    trending_str = "\n".join([f"• {s['symbol']}: ${s['price']:,.2f} ({s['pct']:+.2f}%)" for s in trending[:5]])
+    actives_str = "\n".join([f"• {s['symbol']}: ${s['price']:,.2f} (Vol: {s.get('volume','N/A')})" for s in actives[:5]])
+    
+    prompt = build_market_pulse_prompt(news, trending_str, actives_str, spy, qqq, dia)
+    ai_txt = call_openrouter(prompt)
+    await send(update, f"🩺 **Market Pulse — Bestie Bot US**\n\n{ai_txt}")
+
+
+# ── /watchlist ─────────────────────────────────────────────────────────────────
+
+async def cmd_watchlist(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    chat_id = str(update.effective_chat.id)
+    watchlists = load_watchlists()
+    user_list = watchlists.get(chat_id, [])
+    
+    if not user_list:
+        msg = (
+            "📌 **Watchlist ของคุณยังว่างอยู่**\n\n"
+            "วิธีเพิ่มหุ้น: พิมพ์ `/add AAPL` หรือ `/add NVDA`\n"
+            "วิธีลบหุ้น: พิมพ์ `/del AAPL`"
+        )
+        await send(update, msg)
+        return
+
+    await send(update, f"⏳ กำลังสรุปภาพรวม Watchlist ({len(user_list)} ตัว)...")
+    
+    prices = []
+    for sym in user_list:
+        p = fetch_brief_price(sym)
+        prices.append(f"{sym}: {p}")
+    
+    prompt = build_watchlist_summary_prompt("\n".join(prices))
+    ai_txt = call_openrouter(prompt)
+    
+    msg = f"📌 **Your Watchlist Summary**\n\n{ai_txt}\n\n"
+    msg += "✍️ เพิ่ม/ลบ: `/add [หุ้น]` หรือ `/del [หุ้น]`"
+    await send(update, msg)
+
+async def cmd_add(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not ctx.args:
+        await send(update, "⚠️ โปรดระบุชื่อหุ้นที่ต้องการเพิ่ม เช่น `/add AAPL`")
+        return
+    
+    symbol = ctx.args[0].upper()
+    # Verify symbol
+    price = fetch_brief_price(symbol)
+    if price == "N/A":
+        await send(update, f"⚠️ ไม่พบหุ้นชื่อ `{symbol}` กรุณาตรวจสอบอีกครั้ง")
+        return
+        
+    chat_id = str(update.effective_chat.id)
+    watchlists = load_watchlists()
+    if chat_id not in watchlists:
+        watchlists[chat_id] = []
+        
+    if symbol in watchlists[chat_id]:
+        await send(update, f"💡 หุ้น `{symbol}` มีอยู่ใน Watchlist แล้วจ้า")
+        return
+        
+    watchlists[chat_id].append(symbol)
+    save_watchlists(watchlists)
+    await send(update, f"✅ เพิ่ม `{symbol}` เข้า Watchlist เรียบร้อยแล้ว!\nพิมพ์ `/watchlist` เพื่อดูภาพรวม")
+
+async def cmd_del(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not ctx.args:
+        await send(update, "⚠️ โปรดระบุชื่อหุ้นที่ต้องการลบ เช่น `/del AAPL`")
+        return
+    
+    symbol = ctx.args[0].upper()
+    chat_id = str(update.effective_chat.id)
+    watchlists = load_watchlists()
+    
+    if chat_id not in watchlists or symbol not in watchlists[chat_id]:
+        await send(update, f"⚠️ ไม่พบหุ้น `{symbol}` ใน Watchlist ของคุณ")
+        return
+        
+    watchlists[chat_id].remove(symbol)
+    save_watchlists(watchlists)
+    await send(update, f"🗑 ลบ `{symbol}` ออกจาก Watchlist แล้วจ้า")
+
+
 # ── General Conversation Handler ────────────────────────────────────────────────
 
 async def handle_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     user_text = update.message.text
     if not user_text:
+        return
+        
+    # ดักจับข้อความจากปุ่ม Reply Keyboard
+    if user_text == "📰 ข่าวล่าสุด":
+        return await cmd_news(update, ctx)
+    elif user_text == "📊 ราคาตลาด":
+        return await cmd_market(update, ctx)
+    elif user_text == "🥇 วิเคราะห์ทองคำ":
+        return await cmd_gold(update, ctx)
+    elif user_text == "🌏 ราคาทองไทย":
+        return await cmd_thaigold(update, ctx)
+    elif user_text == "📈 หุ้น Trending":
+        return await cmd_trending(update, ctx)
+    elif user_text == "🔥 Most Active":
+        return await cmd_actives(update, ctx)
+    elif user_text == "🎯 Sniper Signal":
+        return await cmd_sniper(update, ctx)
+    elif user_text == "⚡ Swing Trade":
+        return await cmd_swing(update, ctx)
+    elif user_text == "ℹ️ เมนูทั้งหมด (/help)":
+        return await cmd_help(update, ctx)
+    
+    # ตรวจจับ: ผู้ใช้พิมพ์ชื่อหุ้น/ชื่อบริษัทมาตรงๆ หรือพิมพ์ "วิเคราะห์ [หุ้น]" → วิเคราะห์ 7 ข้อ
+    search_text = user_text
+    if user_text.startswith("วิเคราะห์ "):
+        search_text = user_text.replace("วิเคราะห์ ", "").strip()
+
+    detected = _try_detect_stock_symbol(search_text)
+    if detected:
+        await update.message.chat.send_action(action="typing")
+        price_str = fetch_brief_price(detected)
+        prompt = build_stock_deep_analysis_prompt(detected, price_str)
+        ai_txt = call_openrouter(prompt)
+        chart_link = _yahoo_chart_link(detected)
+        await send(update, f"📊 **วิเคราะห์ {detected}** | ราคา: {price_str}\n\n{ai_txt}\n\n📈 ดูกราฟ: {chart_link}")
         return
         
     chat_id = update.message.chat_id

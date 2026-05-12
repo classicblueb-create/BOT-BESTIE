@@ -38,6 +38,8 @@ from telegram.ext import (
     Application,
     CommandHandler,
     CallbackQueryHandler,
+    MessageHandler,
+    filters,
 )
 
 from handlers.commands import (
@@ -45,7 +47,7 @@ from handlers.commands import (
     cmd_gold, cmd_thaigold, cmd_trending, cmd_actives,
     cmd_sector, cmd_etf, cmd_crypto, cmd_sniper,
     cmd_retire, cmd_mindset, cmd_weekly, cmd_swing,
-    callback_handler,
+    callback_handler, handle_text,
 )
 from handlers.scheduled import (
     job_morning_brief, job_evening_brief, job_pre_market,
@@ -96,6 +98,9 @@ def main() -> None:
     app.add_handler(CommandHandler("retire",   cmd_retire))
     app.add_handler(CommandHandler("mindset",  cmd_mindset))
     app.add_handler(CommandHandler("weekly",   cmd_weekly))
+
+    # ── Text handler (General Chat) ───────────────────────────────────────────
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
     # ── Callback buttons ──────────────────────────────────────────────────────
     app.add_handler(CallbackQueryHandler(callback_handler))

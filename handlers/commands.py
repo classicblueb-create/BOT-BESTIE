@@ -373,6 +373,21 @@ async def cmd_weekly(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await send(update, f"📅 *Weekly Outlook US*\n\n{ai_txt}")
 
 
+# ── General Conversation Handler ────────────────────────────────────────────────
+
+async def handle_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    user_text = update.message.text
+    if not user_text:
+        return
+        
+    await update.message.chat.send_action(action="typing")
+    # ใช้ OpenRouter ตอบคำถามทั่วไป โดยจะสวมบทบาท Bestie Bot อัตโนมัติ (จาก SYSTEM_PERSONA)
+    # เพิ่ม context ให้มันรู้ว่านี่คือการคุยเรื่องการเงินทั่วไป
+    prompt = f"ผู้ใช้ถาม/ชวนคุย: {user_text}\n\nตอบกลับในฐานะผู้เชี่ยวชาญการลงทุนที่ใจดีและเป็นกันเอง (ภาษาไทย)"
+    ai_txt = call_openrouter(prompt)
+    await send(update, ai_txt)
+
+
 # ── Callback query router ──────────────────────────────────────────────────────
 
 async def callback_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:

@@ -1,0 +1,183 @@
+"""
+services/ai.py — OpenRouter AI content generation
+Mirrors GAS: callOpenRouter, buildMorningPrompt, buildEveningPrompt, etc.
+"""
+from __future__ import annotations
+from typing import Optional
+import os
+import requests
+
+OPENROUTER_URL   = "https://openrouter.ai/api/v1/chat/completions"
+DEFAULT_MODEL    = "google/gemini-flash-1.5"
+SYSTEM_PERSONA   = (
+    "คุณคือ Bestie Bot US 🤖 — เพื่อนนักลงทุนที่ฉลาด ใจดี และพูดไทย "
+    "เน้นตลาด US ย่อยง่าย มีอีโมจิพอดี ไม่เกิน 10 บรรทัด"
+)
+
+
+def call_openrouter(prompt: str, model: Optional[str] = None) -> str:
+    """Call OpenRouter and return the assistant text."""
+    api_key = os.getenv("OPENROUTER_API_KEY", "")
+    if not api_key:
+        return "⚠️ ยังไม่ได้ตั้งค่า OPENROUTER_API_KEY"
+    try:
+        resp = requests.post(
+            OPENROUTER_URL,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type":  "application/json",
+                "HTTP-Referer":  "https://bestie-bot-us",
+            },
+            json={
+                "model": model or DEFAULT_MODEL,
+                "messages": [
+                    {"role": "system",  "content": SYSTEM_PERSONA},
+                    {"role": "user",    "content": prompt},
+                ],
+                "temperature": 0.7,
+                "max_tokens":  800,
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        return f"⚠️ AI error: {e}"
+
+
+# ── Prompt builders ────────────────────────────────────────────────────────────
+
+def build_morning_prompt(news: str, indices: str, gold: str, trending: str) -> str:
+    return (
+        f"ข่าว US ล่าสุด:\n{news}\n\n"
+        f"ดัชนีตลาด:\n{indices}\n\n"
+        f"ทองคำ: {gold}\n\n"
+        f"หุ้น Trending:\n{trending}\n\n"
+        "สรุปสั้น Morning Brief ภาษาไทย ≤10 บรรทัด เน้นประเด็นสำคัญ "
+        "และให้แนวทางการลงทุนวันนี้ ใส่อีโมจิด้วย"
+    )
+
+
+def build_evening_prompt(news: str, indices: str, gold: str, movers: str) -> str:
+    return (
+        f"ข่าว US รอบเย็น:\n{news}\n\n"
+        f"ดัชนีตลาดปิดวันนี้:\n{indices}\n\n"
+        f"ทองคำ: {gold}\n\n"
+        f"หุ้น top movers:\n{movers}\n\n"
+        "สรุป Evening Brief ภาษาไทย ≤10 บรรทัด สรุปตลาดวันนี้ "
+        "และแนวโน้มพรุ่งนี้ ใส่อีโมจิ"
+    )
+
+
+def build_pre_market_prompt(news: str, futures: str, gold: str) -> str:
+    return (
+        f"ข่าว Pre-Market:\n{news}\n\n"
+        f"US Futures & Asia:\n{futures}\n\n"
+        f"ทองคำ: {gold}\n\n"
+        "วิเคราะห์ภาษาไทย ≤8 บรรทัด คาดการณ์ทิศทางตลาด US วันนี้ ใส่อีโมจิ"
+    )
+
+
+def build_gold_snapshot_prompt(gold_detail: dict, thai_gold: list) -> str:
+    price = gold_detail.get("price", 0)
+    chg   = gold_detail.get("change", 0)
+    pct   = gold_detail.get("changePct", 0)
+    sign  = "+" if chg >= 0 else ""
+    thai_lines = "\n".join(
+        f"  {g['name']}: ซื้อ {g['bid']} / ขาย {g['ask']}"
+        for g in thai_gold[:3]
+    ) or "N/A"
+    return (
+        f"ราคาทองคำโลก XAU/USD: ${price:,.2f} ({sign}{chg:+.2f}, {sign}{pct:.2f}%)\n"
+        f"ทองไทย:\n{thai_lines}\n\n"
+        "วิเคราะห์ทองคำภาษาไทย ≤8 บรรทัด: แนวรับแนวต้าน, ปัจจัยกดดัน, "
+        "คำแนะนำการ trade ใส่อีโมจิ"
+    )
+
+
+def build_gold_signal_prompt(gold_detail: dict) -> str:
+    price = gold_detail.get("price", 0)
+    chg   = gold_detail.get("change", 0)
+    pct   = gold_detail.get("changePct", 0)
+    return (
+        f"XAU/USD ตอนนี้ ${price:,.2f} ({chg:+.2f} / {pct:+.2f}%)\n\n"
+        "วิเคราะห์ Gold signal ≤6 บรรทัด: แนวรับแนวต้าน, Buy/Sell/Hold, "
+        "target, stop-loss ใส่อีโมจิ"
+    )
+
+
+def build_sniper_prompt(symbol: str, price_str: str) -> str:
+    return (
+        f"วิเคราะห์หุ้น {symbol} ราคา {price_str}\n\n"
+        "ภาษาไทย ≤8 บรรทัด: Sniper Entry Zone, target, stop-loss, "
+        "sentiment, ใส่อีโมจิ"
+    )
+
+
+def build_sector_prompt(sector: str, symbols_str: str) -> str:
+    return (
+        f"Sector: {sector}\nหุ้นตัวอย่าง: {symbols_str}\n\n"
+        "วิเคราะห์ภาษาไทย ≤8 บรรทัด: ภาพรวม sector, โอกาส, ความเสี่ยง, "
+        "หุ้นน่าสนใจ ใส่อีโมจิ"
+    )
+
+
+def build_wealth_mindset_prompt() -> str:
+    return (
+        "แชร์บทเรียน Wealth Mindset หรือ Quote นักลงทุนระดับโลก "
+        "ภาษาไทย ≤6 บรรทัด เน้นแรงบันดาลใจ ใส่อีโมจิ"
+    )
+
+
+def build_weekly_outlook_prompt(news: str, indices: str) -> str:
+    return (
+        f"ข่าวสัปดาห์นี้:\n{news}\n\n"
+        f"ดัชนี:\n{indices}\n\n"
+        "วิเคราะห์ Weekly Outlook ภาษาไทย ≤10 บรรทัด: "
+        "Theme สัปดาห์นี้, หุ้น/sector น่าจับตา, ความเสี่ยง ใส่อีโมจิ"
+    )
+
+
+def build_economic_calendar_prompt(news: str) -> str:
+    return (
+        f"ข่าวเศรษฐกิจล่าสุด:\n{news}\n\n"
+        "สรุป Economic Calendar ภาษาไทย ≤8 บรรทัด: "
+        "เหตุการณ์สำคัญสัปดาห์นี้, ผลกระทบต่อตลาด ใส่อีโมจิ"
+    )
+
+
+def build_new_high_prompt(symbol: str, price_str: str) -> str:
+    return (
+        f"หุ้น {symbol} ({price_str}) อาจทำ New High\n\n"
+        "ภาษาไทย ≤6 บรรทัด: momentum, แนวต้านถัดไป, "
+        "น่า buy breakout หรือรอ pullback ใส่อีโมจิ"
+    )
+
+
+def build_etf_prompt(symbol: str, name: str, price_str: str) -> str:
+    return (
+        f"ETF: {name} ({symbol}) ราคา {price_str}\n\n"
+        "วิเคราะห์ภาษาไทย ≤8 บรรทัด: ภาพรวม ETF, ผลตอบแทนปีนี้, "
+        "เหมาะกับ port ประเภทไหน, ข้อควรระวัง ใส่อีโมจิ"
+    )
+
+
+def build_retirement_prompt(age: int, goal_m: float, current_m: float,
+                             monthly_invest: float, years: int) -> str:
+    return (
+        f"อายุ {age} ปี\n"
+        f"เป้าหมายเกษียณ: {goal_m:.1f}M บาท\n"
+        f"มีทุนปัจจุบัน: {current_m:.1f}M บาท\n"
+        f"ลงทุนต่อเดือน: {monthly_invest:,.0f} บาท\n"
+        f"เหลือเวลา: {years} ปี\n\n"
+        "คำนวณและให้คำแนะนำแผนเกษียณ ภาษาไทย ≤10 บรรทัด "
+        "เลือก asset mix (US stocks, ETF, bonds, gold) ให้เหมาะกับเป้า ใส่อีโมจิ"
+    )
+
+
+def build_crypto_prompt(symbol: str, price_str: str) -> str:
+    return (
+        f"Crypto: {symbol} ราคา {price_str}\n\n"
+        "วิเคราะห์ภาษาไทย ≤8 บรรทัด: แนวโน้ม, sentiment, "
+        "แนวรับแนวต้าน, คำแนะนำ ใส่อีโมจิ"
+    )

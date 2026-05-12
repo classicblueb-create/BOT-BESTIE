@@ -1,0 +1,16 @@
+# render.yaml — One-click deploy to Render.com
+# Push โค้ดขึ้น GitHub แล้วเชื่อมกับ Render จะ Deploy อัตโนมัติ
+
+services:
+  - type: worker
+    name: bestie-bot-us
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python telegram_bot.py
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false          # Render จะถามค่านี้ตอน Deploy
+      - key: TELEGRAM_CHANNEL
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false

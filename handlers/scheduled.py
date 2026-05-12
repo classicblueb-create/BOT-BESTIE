@@ -27,7 +27,7 @@ from services.ai import (
     build_gold_snapshot_prompt, build_gold_signal_prompt,
     build_wealth_mindset_prompt, build_weekly_outlook_prompt,
     build_economic_calendar_prompt, build_sniper_prompt, build_new_high_prompt,
-    build_sentiment_alert_prompt,
+    build_sentiment_alert_prompt, build_auto_swing_prompt,
 )
 
 log = logging.getLogger(__name__)
@@ -297,4 +297,36 @@ async def job_sentiment_scanner(ctx: ContextTypes.DEFAULT_TYPE) -> None:
                         break
             except Exception as e:
                 log.error("Sentiment Scanner error for %s: %s", sym, e)
+
+
+# ── Auto Swing Trade Recommend (Daily Afternoon) ───────────────────────────────
+
+async def job_auto_swing_broadcast(ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if is_weekend():
+        return
+    log.info("📊 Auto Swing Trade Recommend broadcast")
+    
+    candidates = fetch_most_actives() + fetch_trending_equities()
+    filtered = {}
+    for stock in candidates:
+        sym = stock.get("symbol", "")
+        price = stock.get("price", 0)
+        if sym and price >= 20.0:
+            filtered[sym] = f"{sym}: ${price:,.2f} ({stock.get('pct', 0):+.2f}%)"
+            
+    if not filtered:
+        return
+        
+    candidates_str = "\n".join(list(filtered.values())[:20]) # ดึงไป 20 ตัว ให้ AI คัดเหลือ 5-7 ตัว
+    prompt = build_auto_swing_prompt(candidates_str)
+    ai_txt = call_openrouter(prompt)
+    
+    msg = (
+        "⚡ *Auto Swing Trade Recommend (US Market)*\n"
+        f"_{datetime.now(TZ_BKK).strftime('%A, %d %B %Y — %H:%M')}_\n\n"
+        f"คัดเลือก 5-7 หุ้นพื้นฐานดีที่น่าสนใจสำหรับการทำกำไรระยะสั้น:\n\n"
+        f"{ai_txt}"
+    )
+    await _broadcast(ctx, msg)
+
 

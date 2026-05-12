@@ -52,6 +52,7 @@ from handlers.scheduled import (
     job_gold_snapshot, job_gold_signal, job_wealth_mindset,
     job_weekly_outlook, job_economic_calendar,
     job_sniper_auto, job_new_high, job_sentiment_scanner,
+    job_auto_swing_broadcast,
 )
 
 # ── Bootstrap ──────────────────────────────────────────────────────────────────
@@ -108,6 +109,7 @@ def main() -> None:
     jq.run_daily(job_economic_calendar,_bkk(8, 30),  name="economic_calendar")
     jq.run_daily(job_gold_snapshot,    _bkk(9,  0),  name="gold_snapshot_am")
     jq.run_daily(job_gold_signal,      _bkk(10, 0),  name="gold_signal_am")
+    jq.run_daily(job_auto_swing_broadcast, _bkk(15, 0), name="auto_swing_pm")
     jq.run_daily(job_gold_snapshot,    _bkk(16, 0),  name="gold_snapshot_pm")
     jq.run_daily(job_pre_market,       _bkk(20, 0),  name="pre_market")
     jq.run_daily(job_evening_brief,    _bkk(21, 30), name="evening_brief")

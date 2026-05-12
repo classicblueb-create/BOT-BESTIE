@@ -59,7 +59,7 @@ from handlers.scheduled import (
 
 # ── Bootstrap ──────────────────────────────────────────────────────────────────
 
-load_dotenv()
+load_dotenv(override=True)
 
 logging.basicConfig(
     level=logging.INFO,

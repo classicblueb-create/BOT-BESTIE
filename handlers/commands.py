@@ -25,6 +25,9 @@ from services.ai import (
 
 log = logging.getLogger(__name__)
 
+# Dictionary to store conversation history per chat_id
+USER_HISTORY = {}
+
 # ── Sector definitions ─────────────────────────────────────────────────────────
 
 SECTORS: dict[str, list[str]] = {
@@ -380,11 +383,26 @@ async def handle_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not user_text:
         return
         
+    chat_id = update.message.chat_id
     await update.message.chat.send_action(action="typing")
-    # ใช้ OpenRouter ตอบคำถามทั่วไป โดยจะสวมบทบาท Bestie Bot อัตโนมัติ (จาก SYSTEM_PERSONA)
-    # เพิ่ม context ให้มันรู้ว่านี่คือการคุยเรื่องการเงินทั่วไป
-    prompt = f"ผู้ใช้ถาม/ชวนคุย: {user_text}\n\nตอบกลับในฐานะผู้เชี่ยวชาญการลงทุนที่ใจดีและเป็นกันเอง (ภาษาไทย)"
-    ai_txt = call_openrouter(prompt)
+    
+    # ดึงประวัติการคุยของ user นี้ (จำกัด 10 ข้อความล่าสุด เพื่อไม่ให้เปลือง token)
+    if chat_id not in USER_HISTORY:
+        USER_HISTORY[chat_id] = []
+        
+    history = USER_HISTORY[chat_id]
+    
+    # ใช้ OpenRouter ตอบคำถามทั่วไป โดยจะสวมบทบาท Bestie Bot อัตโนมัติและจำ context ได้
+    ai_txt = call_openrouter(user_text, history=history)
+    
+    # อัปเดตประวัติการคุย
+    history.append({"role": "user", "content": user_text})
+    history.append({"role": "assistant", "content": ai_txt})
+    
+    # จำกัดประวัติไว้แค่ 10 ข้อความล่าสุด (5 คู่ ถาม-ตอบ)
+    if len(history) > 10:
+        USER_HISTORY[chat_id] = history[-10:]
+        
     await send(update, ai_txt)
 
 

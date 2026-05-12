@@ -5,44 +5,58 @@ Mirrors GAS: callOpenRouter, buildMorningPrompt, buildEveningPrompt, etc.
 from __future__ import annotations
 from typing import Optional
 import os
+import time
 import requests
 
 OPENROUTER_URL   = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_MODEL    = "google/gemini-flash-1.5"
+DEFAULT_MODEL    = "google/gemma-4-26b-a4b-it:free"
 SYSTEM_PERSONA   = (
-    "คุณคือ Bestie Bot US 🤖 — เพื่อนนักลงทุนที่ฉลาด ใจดี และพูดไทย "
-    "เน้นตลาด US ย่อยง่าย มีอีโมจิพอดี ไม่เกิน 10 บรรทัด"
+    "คุณคือ Bestie Bot US 🤖 — ผู้เชี่ยวชาญด้านการเงินและการลงทุนทุกรูปแบบ ตอบคำถามได้ครอบคลุม "
+    "ทั้งหุ้น US, ราคาน้ำมัน, ทองคำโลก, ทองสมาคมไทย, คริปโตเคอร์เรนซี (Bitcoin ฯลฯ) "
+    "ทำหน้าที่เป็นเพื่อนสนิทที่คอยให้คำปรึกษา แลกเปลี่ยนความคิดเห็น และคุยโต้ตอบได้เป็นธรรมชาติ "
+    "ใจดี เป็นกันเอง มีการใช้อีโมจิให้ดูน่าอ่าน"
 )
 
 
-def call_openrouter(prompt: str, model: Optional[str] = None) -> str:
+def call_openrouter(prompt: str, model: Optional[str] = None, history: Optional[list] = None) -> str:
     """Call OpenRouter and return the assistant text."""
     api_key = os.getenv("OPENROUTER_API_KEY", "")
     if not api_key:
         return "⚠️ ยังไม่ได้ตั้งค่า OPENROUTER_API_KEY"
-    try:
-        resp = requests.post(
-            OPENROUTER_URL,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type":  "application/json",
-                "HTTP-Referer":  "https://bestie-bot-us",
-            },
-            json={
-                "model": model or DEFAULT_MODEL,
-                "messages": [
-                    {"role": "system",  "content": SYSTEM_PERSONA},
-                    {"role": "user",    "content": prompt},
-                ],
-                "temperature": 0.7,
-                "max_tokens":  800,
-            },
-            timeout=30,
-        )
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        return f"⚠️ AI error: {e}"
+        
+    messages = [{"role": "system", "content": SYSTEM_PERSONA}]
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": prompt})
+    
+    for attempt in range(3):
+        try:
+            resp = requests.post(
+                OPENROUTER_URL,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type":  "application/json",
+                    "HTTP-Referer":  "https://bestie-bot-us",
+                },
+                json={
+                    "model": model or DEFAULT_MODEL,
+                    "messages": messages,
+                    "temperature": 0.7,
+                    "max_tokens":  800,
+                },
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"].strip()
+        except requests.exceptions.HTTPError as e:
+            if resp.status_code == 429:
+                if attempt < 2:
+                    time.sleep(3) # รอ 3 วินาทีแล้วลองใหม่
+                    continue
+                return "⚠️ AI error: เซิร์ฟเวอร์ของโมเดลฟรี (Free Tier) มีคนใช้งานหนาแน่นเกินไป (Too Many Requests) กรุณาลองใหม่ในอีกสักครู่ครับ"
+            return f"⚠️ AI HTTP error: {e}"
+        except Exception as e:
+            return f"⚠️ AI error: {e}"
 
 
 # ── Prompt builders ────────────────────────────────────────────────────────────

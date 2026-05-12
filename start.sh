@@ -16,7 +16,10 @@ if [ ! -f ".env" ]; then
 fi
 
 # ตรวจสอบ TELEGRAM_BOT_TOKEN
+set -a
 source .env
+set +a
+
 if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ "$TELEGRAM_BOT_TOKEN" = "your_telegram_bot_token_here" ]; then
     echo "❌ TELEGRAM_BOT_TOKEN ยังไม่ได้ตั้งค่าใน .env"
     exit 1

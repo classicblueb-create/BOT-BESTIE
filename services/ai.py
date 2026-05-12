@@ -181,3 +181,11 @@ def build_crypto_prompt(symbol: str, price_str: str) -> str:
         "วิเคราะห์ภาษาไทย ≤8 บรรทัด: แนวโน้ม, sentiment, "
         "แนวรับแนวต้าน, คำแนะนำ ใส่อีโมจิ"
     )
+
+def build_sentiment_alert_prompt(symbol: str, price_str: str, pct: float) -> str:
+    return (
+        f"หุ้น US: {symbol} (ราคา {price_str}, เปลี่ยนแปลง {pct:+.2f}%)\n"
+        "จับสัญญาณความผิดปกติ/Volume เข้า/ข่าวสำคัญ\n\n"
+        "วิเคราะห์แบบเร่งด่วน (ภาษาไทย ≤8 บรรทัด): เกิดอะไรขึ้น? ข่าว/Sentiment เชิงบวกหรือลบ? "
+        "มีโอกาสทำกำไรระยะสั้น (Trade setup) อย่างไร แนวต้าน/Stop-loss อยู่ตรงไหน เน้นฟันธงเด็ดขาด ใส่อีโมจิ"
+    )

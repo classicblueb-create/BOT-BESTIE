@@ -27,6 +27,7 @@ from services.ai import (
     build_gold_snapshot_prompt, build_gold_signal_prompt,
     build_wealth_mindset_prompt, build_weekly_outlook_prompt,
     build_economic_calendar_prompt, build_sniper_prompt, build_new_high_prompt,
+    build_sentiment_alert_prompt,
 )
 
 log = logging.getLogger(__name__)
@@ -36,6 +37,17 @@ TZ_BKK = timezone(timedelta(hours=7))
 
 SNIPER_SYMBOLS = ["NVDA", "AAPL", "TSLA", "MSFT", "META",
                   "AMZN", "GOOGL", "AMD", "COIN", "PLTR"]
+
+# เก็บประวัติเพื่อป้องกันการสแปมแจ้งเตือนตัวเดิมซ้ำในวันเดียวกัน
+_alerted_today: set[str] = set()
+_last_clear_day: int = -1
+
+def _clear_alerts_if_new_day():
+    global _last_clear_day
+    now_day = datetime.now(TZ_BKK).day
+    if now_day != _last_clear_day:
+        _alerted_today.clear()
+        _last_clear_day = now_day
 
 
 def is_weekend() -> bool:
@@ -246,3 +258,43 @@ async def job_new_high(ctx: ContextTypes.DEFAULT_TYPE) -> None:
                 await _broadcast(ctx, msg)
         except Exception as e:
             log.error("New High error: %s", e)
+
+# ── Sentiment & Momentum Scanner (every 30 mins) ─────────────────────────────
+
+async def job_sentiment_scanner(ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if is_weekend():
+        return
+    _clear_alerts_if_new_day()
+    log.info("🚨 Sentiment & Momentum scan")
+    
+    # ดึงทั้งหุ้นที่ Active และ Trending
+    candidates = fetch_most_actives() + fetch_trending_equities()
+    
+    # หาตัวที่มีการเปลี่ยนแปลงแรงๆ (> 4% หรือ < -4%)
+    for stock in candidates:
+        sym = stock.get("symbol", "")
+        pct = stock.get("pct", 0)
+        price = stock.get("price", 0)
+        
+        # กรองเฉพาะหุ้นที่มีความผันผวนสูงและยังไม่เคยแจ้งเตือนในวันนี้
+        if sym and abs(pct) >= 4.0 and sym not in _alerted_today:
+            try:
+                price_str = f"${price:,.2f}"
+                prompt = build_sentiment_alert_prompt(sym, price_str, pct)
+                ai_txt = call_openrouter(prompt)
+                
+                # ถ้า AI วิเคราะห์ว่ามี Signal น่าสนใจ (ไม่ตอบกลับมาเป็น error)
+                if not ai_txt.startswith("⚠️"):
+                    icon = "🔥" if pct > 0 else "🩸"
+                    msg = (f"{icon} *Fast Sentiment Alert: {sym}*\n"
+                           f"💲 {price_str} ({pct:+.2f}%)\n\n"
+                           f"{ai_txt}")
+                    await _broadcast(ctx, msg)
+                    _alerted_today.add(sym)
+                    
+                    # แจ้งเตือนแค่ครั้งละ 1-2 ตัวพอ จะได้ไม่สแปมแชท
+                    if len([s for s in candidates if abs(s.get("pct",0)) >= 4.0 and s.get("symbol") in _alerted_today]) >= 2:
+                        break
+            except Exception as e:
+                log.error("Sentiment Scanner error for %s: %s", sym, e)
+

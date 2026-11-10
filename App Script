@@ -94,11 +94,14 @@ function doPost(e) {
       return ContentService.createTextOutput("OK");
     }
 
+    // ── [v3.27] Trader commands (trader_line.gs): สแกน / แผน / โอกาส / เตือน / ข่าว / งบ / ตั้งค่าเทรด ──
+    if (handleTraderCommand(userInput, userId, replyToken)) return ContentService.createTextOutput("OK");
+
 // ── Swing Trade ──
 var swingMatch = userInput.match(/^swing\s+([A-Za-z0-9\-]{1,6})$/i);
 if (swingMatch) {
   // swing NVDA → วิเคราะห์เดี่ยว
-  replyToLine(replyToken, buildSingleSwingFlex(swingMatch[1]));
+  replyToLine(replyToken, buildSingleSwingFlex(swingMatch[1], userId));
   return ContentService.createTextOutput("OK");
 }
 if (/^swing$/i.test(userInput)) {
@@ -2450,15 +2453,13 @@ function sendWeeklyPromo() {
 // ║  พิมพ์: บันทึก NVDA / ลบ NVDA / รายการโปรด / พอร์ต         ║
 // ╚══════════════════════════════════════════════════════════════╝
 
+// [v3.27] เก็บที่ Supabase (supabase_store.gs) — fallback เป็น Script Properties ถ้ายังไม่ตั้งค่า
 function getWatchlist(userId) {
-  try {
-    var raw = PropertiesService.getScriptProperties().getProperty("WL_" + userId);
-    return raw ? JSON.parse(raw) : [];
-  } catch(e) { return []; }
+  try { return storeGetWatchlist(userId); } catch(e) { return []; }
 }
 
 function saveWatchlist(userId, list) {
-  PropertiesService.getScriptProperties().setProperty("WL_" + userId, JSON.stringify(list));
+  storeSaveWatchlist(userId, list);
 }
 
 function addToWatchlist(userId, symbol) {
@@ -6676,7 +6677,7 @@ function buildSwingTradeFlex(userId) {
 //  วิเคราะห์หุ้นเดี่ยว ละเอียด พร้อม Reddit + News + ราคาสด
 // ═══════════════════════════════════════════════════════════════
 
-function buildSingleSwingFlex(symbol) {
+function buildSingleSwingFlex(symbol, userId) {
   try {
     symbol = symbol.toUpperCase().trim();
 
@@ -6761,6 +6762,9 @@ function buildSingleSwingFlex(symbol) {
         " | Analysts: " + analystData.numAnalysts + " คน"
       : "ไม่มีข้อมูล Analyst";
 
+    // [v3.27] ตัวเลข Entry/Stop/Target/ขนาดไม้ คำนวณด้วยโค้ด (trader_line.gs) — AI แค่อธิบาย
+    var tradeNumbers = traderSwingNumbersForPrompt(symbol, userId);
+
     var prompt =
       "คุณคือ Bestie นักวิเคราะห์ Swing Trade มืออาชีพ ตอบภาษาไทย เป็นกันเอง\n" +
       HUMANIZE_RULES +
@@ -6768,6 +6772,7 @@ function buildSingleSwingFlex(symbol) {
       "ราคาล่าสุด: " + priceDisp + "\n" +
       (earningsStr ? earningsStr + "\n" : "") +
       "\nAnalyst: " + analystSummary + "\n\n" +
+      (tradeNumbers ? tradeNumbers + "\n" : "") +
       "Reddit Community:\n" + redditSummary + "\n\n" +
       "ข่าวล่าสุดของ " + symbol + ":\n" +
       (symbolNews.length > 0 ? symbolNews.map(function(n,i){return (i+1)+". "+n;}).join("\n") : "ไม่พบข่าวล่าสุด") + "\n\n" +
@@ -6783,19 +6788,23 @@ function buildSingleSwingFlex(symbol) {
       "[อธิบาย catalyst ที่ทำให้ราคาขยับ เชื่อมกับข่าวและ Reddit จริงๆ 2-3 ประโยค]\n\n" +
 
       "2. Entry Zone\n" +
-      "[ราคาที่แนะนำให้เข้าซื้อ พร้อมเหตุผล technical เช่น EMA20 support, Fib level]\n\n" +
+      (tradeNumbers ? "[ใช้ Entry จากตัวเลขที่ระบบคำนวณ แล้วอธิบายเหตุผลจาก RSI/MA20/สัญญาณกราฟที่ให้มา]\n\n"
+                    : "[ราคาที่แนะนำให้เข้าซื้อ พร้อมเหตุผล technical เช่น EMA20 support, Fib level]\n\n") +
 
       "3. Target (3-5 วัน)\n" +
-      "[ราคาเป้าหมาย + % กำไร + เหตุผล เช่น resistance level, analyst target]\n\n" +
+      (tradeNumbers ? "[ใช้ Target จากตัวเลขที่ระบบคำนวณ + % กำไร เทียบกับ analyst target ถ้ามี]\n\n"
+                    : "[ราคาเป้าหมาย + % กำไร + เหตุผล เช่น resistance level, analyst target]\n\n") +
 
       "4. Stop-Loss\n" +
-      "[ราคา stop-loss + % ขาดทุน + เหตุผล เช่น ต่ำกว่า support สำคัญ]\n\n" +
+      (tradeNumbers ? "[ใช้ Stop-Loss จากตัวเลขที่ระบบคำนวณ + % ขาดทุน]\n\n"
+                    : "[ราคา stop-loss + % ขาดทุน + เหตุผล เช่น ต่ำกว่า support สำคัญ]\n\n") +
 
       "5. Reddit & Community Sentiment\n" +
       "[สรุป sentiment จาก Reddit posts ที่ได้รับ ถ้าไม่พบให้บอก N/A]\n\n" +
 
       "6. คำเตือน\n" +
-      "[ความเสี่ยงเฉพาะของหุ้นนี้ + แนะนำขนาด position]\n\n" +
+      (tradeNumbers ? "[ความเสี่ยงเฉพาะของหุ้นนี้ + ขนาดไม้จากตัวเลขที่ระบบคำนวณ]\n\n"
+                    : "[ความเสี่ยงเฉพาะของหุ้นนี้ + แนะนำขนาด position]\n\n") +
 
       "ห้ามแต่งราคาหรือตัวเลขที่ไม่มีในข้อมูล ลงท้าย คะ/ค่ะ";
 

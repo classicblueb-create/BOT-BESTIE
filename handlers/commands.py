@@ -34,24 +34,10 @@ log = logging.getLogger(__name__)
 USER_HISTORY = {}
 USER_SWING_ROTATION = {}
 
-WATCHLIST_FILE = "watchlist.json"
+# Watchlist storage: Supabase when SUPABASE_URL / SUPABASE_SERVICE_KEY are set,
+# otherwise the local watchlist.json file (see services/store.py)
+from services.store import load_watchlists, save_watchlists  # noqa: E402
 
-def load_watchlists() -> dict[str, list[str]]:
-    if os.path.exists(WATCHLIST_FILE):
-        try:
-            with open(WATCHLIST_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            log.error(f"Error loading watchlist: {e}")
-            return {}
-    return {}
-
-def save_watchlists(data: dict[str, list[str]]):
-    try:
-        with open(WATCHLIST_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        log.error(f"Error saving watchlist: {e}")
 
 # ── Sector definitions ─────────────────────────────────────────────────────────
 

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Bestie Bot US v3.24 - Full Merged
  * โดย ModGoScale
@@ -49,9 +50,10 @@ function getConfig() {
 // ─────────────────────────────────────────────
 function isWeekend() {
   const now = new Date();
-  // ใช้เวลา Asia/Bangkok
-  const bkkDay = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Bangkok" })).getDay();
-  return bkkDay === 0 || bkkDay === 6; // 0 = อาทิตย์, 6 = เสาร์
+  const offset = 7 * 60; // Bangkok UTC+7
+  const bkkTime = new Date(now.getTime() + offset * 60 * 1000);
+  const day = bkkTime.getUTCDay();
+  return day === 0 || day === 6;
 }
 
 
@@ -91,6 +93,25 @@ function doPost(e) {
       replyToLine(replyToken, buildWatchlistFlex(userId));
       return ContentService.createTextOutput("OK");
     }
+
+// ── Swing Trade ──
+var swingMatch = userInput.match(/^swing\s+([A-Za-z0-9\-]{1,6})$/i);
+if (swingMatch) {
+  // swing NVDA → วิเคราะห์เดี่ยว
+  replyToLine(replyToken, buildSingleSwingFlex(swingMatch[1]));
+  return ContentService.createTextOutput("OK");
+}
+if (/^swing$/i.test(userInput)) {
+  // swing → สุ่ม 3 รอบ
+  replyToLine(replyToken, buildSwingTradeFlex(userId));
+  return ContentService.createTextOutput("OK");
+}
+
+// ── [HELP] Command Menu ──
+if (/^(คำสั่ง|command|commands|cmd|ใช้งาน|วิธีใช้|helpme)$/i.test(userInput)) {
+  replyToLine(replyToken, buildCommandMenuFlex());
+  return ContentService.createTextOutput("OK");
+}
 
     // ── Greeting ──
     if (/^(สวัสดี|หวัดดี|ดีจ้า|hi|hello|ทักทาย|ดีค่า|เมนู|menu|help)/i.test(userInput)) {
@@ -350,7 +371,9 @@ function buildUsageFlex() {
         { "type": "action", "action": { "type": "message", "label": "🇹🇭 ราคาทองไทย", "text": "ราคาทองไทย" } },
         { "type": "action", "action": { "type": "message", "label": "📰 สรุปข่าว", "text": "สรุปข่าว" } },
         { "type": "action", "action": { "type": "message", "label": "💹 กลุ่มหุ้น US", "text": "แนะนำกลุ่มหุ้นน่าสนใจ" } },
-        { "type": "action", "action": { "type": "message", "label": "🏖️ วางแผนเกษียณ", "text": "วางแผนเกษียณ" } }
+        { "type": "action", "action": { "type": "message", "label": "🏖️ วางแผนเกษียณ", "text": "วางแผนเกษียณ" } },
+        { "type": "action", "action": { "type": "message", "label": "📋 คำสั่ง", "text": "คำสั่ง" } },
+        { "type": "action", "action": { "type": "message", "label": "📈 Swing", "text": "swing" } }
       ]
     },
     "contents": {
@@ -392,7 +415,7 @@ function buildUsageFlex() {
               {
                 "type": "box", "layout": "horizontal", "spacing": "sm",
                 "contents": [
-                  buildCuteMenuBtnFull("📊", "Market Pulse (ข่าว+Trend+Active)", "ตลาดวันนี้", "#E8EAF6", "#1A237E")
+                  buildCuteMenuBtnFull("📊", "รู้ยัง? ตลาดหุ้นวันนี้มีอะไร:ข่าว+เทรนด์+หุ้นแรง คัดมาแล้ว!", "ตลาดวันนี้", "#E8EAF6", "#1A237E")
                 ]
               },
               {
@@ -970,7 +993,7 @@ ${newsRaw}
 
     return {
       "type": "flex",
-      "altText": "📊 Market Pulse " + dateStr + " — ข่าว + Trending + Most Active รวมไว้ให้เลย!",
+      "altText": "📊 รู้ยัง? ตลาดหุ้นวันนี้มีอะไร" + dateStr + " : ข่าว+เทรนด์+หุ้นแรง คัดมาแล้ว!",
       "quickReply": { "items": qr },
       "contents": {
         "type": "bubble", "size": "giga",
@@ -979,7 +1002,7 @@ ${newsRaw}
           "contents": [
             { "type": "box", "layout": "horizontal", "contents": [
               { "type": "box", "layout": "vertical", "flex": 4, "contents": [
-                { "type": "text", "text": "📊 MARKET PULSE", "weight": "bold", "size": "lg", "color": "#FFFFFF" },
+                { "type": "text", "text": "📊 รู้ยัง? ตลาดหุ้นวันนี้มีอะไร", "weight": "bold", "size": "lg", "color": "#FFFFFF" },
                 { "type": "text", "text": dateStr + " เวลา " + timeStr + " น.", "size": "xs", "color": "#9FA8DA", "margin": "xs" }
               ]},
               { "type": "box", "layout": "vertical", "flex": 2, "alignItems": "flex-end", "contents": [
@@ -1980,7 +2003,7 @@ headlines.map(function(h, i) { return (i+1) + ". " + h; }).join("\n") +
         "HTTP-Referer": WEB_REFERER
       },
       "payload": JSON.stringify({
-        "model": "google/gemma-4-31b-it",
+        "model": "google/gemma-4-26b-a4b-it",
         "stream": false,
         "messages": [{ "role": "user", "content": prompt }],
         "temperature": 0.6,
@@ -2184,7 +2207,7 @@ topMovers + "\n\n" +
         "HTTP-Referer": WEB_REFERER
       },
       "payload": JSON.stringify({
-        "model": "google/gemma-4-31b-it",
+        "model": "google/gemma-4-26b-a4b-it",
         "stream": false,
         "messages": [
           { "role": "system", "content": systemPrompt },
@@ -2829,7 +2852,7 @@ ${HUMANIZE_RULES}
     const res        = UrlFetchApp.fetch("https://openrouter.ai/api/v1/chat/completions", {
       "method": "post",
       "headers": { "Authorization": "Bearer " + config.openRouterKey, "Content-Type": "application/json", "HTTP-Referer": WEB_REFERER },
-      "payload": JSON.stringify({ "model": "google/gemma-4-31b-it", "stream": false, "messages": [{ "role": "user", "content": prompt }], "temperature": 0.8, "max_tokens": 400 }),
+      "payload": JSON.stringify({ "model": "google/gemma-4-26b-a4b-it", "stream": false, "messages": [{ "role": "user", "content": prompt }], "temperature": 0.8, "max_tokens": 400 }),
       "muteHttpExceptions": true
     });
     const aiResponse = JSON.parse(res.getContentText())?.choices?.[0]?.message?.content?.trim() || "ขออภัยค่า Bestie เอ๋อไปแป๊บนึง 😅";
@@ -2884,7 +2907,7 @@ ${_newsQA}
       "method": "post",
       "headers": { "Authorization": "Bearer " + config.openRouterKey, "Content-Type": "application/json", "HTTP-Referer": WEB_REFERER },
       "payload": JSON.stringify({
-        "model": "google/gemma-4-31b-it",
+        "model": "google/gemma-4-26b-a4b-it",
         "stream": false,
         "messages": [{ "role": "user", "content": prompt }],
         "temperature": 0.65,
@@ -3127,19 +3150,23 @@ function fetchYahooFinanceData(symbol) {
     const meta = JSON.parse(UrlFetchApp.fetch(url, { muteHttpExceptions: true, deadline: 5 }).getContentText())?.chart?.result?.[0]?.meta;
     if (!meta?.regularMarketPrice) return "ERROR: ราคาเป็น null";
 
-    // ตรวจว่าเป็นตลาดต่างประเทศที่ชัดเจน (ยุโรป/เอเชีย) หรือไม่
-    // ถ้าไม่แน่ใจ → ให้ผ่านเลย ดีกว่าบล็อกผิด
-    const exchange = (meta.exchangeName || meta.fullExchangeName || "").toLowerCase();
-    const isForeignExchange = /\bfra\b|\bams\b|\bpar\b|\bsto\b|\bvie\b|\bzur\b|\blon\b|\bmil\b|\bist\b|\bhkg\b|\bshh\b|\bshz\b|\btyo\b|\bksc\b|\bkoe\b|\bbom\b|\bnse\b|\bbue\b|\bsao\b|\bssx\b|\bsets\b/.test(exchange);
+    // ── [FIX] Allowlist: รับเฉพาะตลาด US + crypto เท่านั้น ──
+    const exch     = (meta.exchangeName || "").toUpperCase();      // เช่น NMS, NYQ, CCC
+    const currency = (meta.currency || "").toUpperCase();
+    const US_EXCHANGES = ["NMS","NYQ","NGM","NCM","NGS","ASE","PCX","BTS","PNK","CXI","NIM"];
+    // NMS/NGM/NCM/NGS = NASDAQ, NYQ = NYSE, ASE = NYSE American, PCX = NYSE Arca
+    const isCrypto = symbol.includes("-USD") || exch === "CCC";
+    const isUS     = US_EXCHANGES.indexOf(exch) !== -1 && currency === "USD";
 
-    if (isForeignExchange) {
-      console.log("Foreign exchange blocked: " + symbol + " on " + exchange);
-      return "ERROR: " + symbol + " เป็นหุ้นต่างประเทศ (" + exchange + ") ไม่ใช่ตลาด US";
+    if (!isUS && !isCrypto) {
+      console.log("Non-US blocked: " + symbol + " exch=" + exch + " currency=" + currency);
+      return "ERROR: " + symbol + " เป็นหุ้นต่างประเทศ (" + (meta.fullExchangeName || exch) + ", สกุล " + currency + ") ไม่ใช่ตลาด US";
     }
 
     return "สินทรัพย์: " + symbol +
-           ", ราคาล่าสุด: " + meta.regularMarketPrice.toFixed(2) +
-           ", exchange: " + (meta.fullExchangeName || exchange || "US");
+           ", ชื่อบริษัท: " + (meta.shortName || meta.longName || "N/A") +   // ← ส่งชื่อจริงให้ AI
+           ", ราคาล่าสุด: " + meta.regularMarketPrice.toFixed(2) + " USD" +
+           ", exchange: " + (meta.fullExchangeName || exch);
   } catch (e) { return "ERROR: ดึงข้อมูลไม่ได้"; }
 }
 
@@ -3166,6 +3193,9 @@ ${HUMANIZE_RULES}
 กฎเหล็กด้านหน่วยเงิน:
 - ราคาทุกตัวเลขหุ้นอเมริกาต้องระบุ "USD" ต่อท้ายเสมอ ห้ามใช้ "บาท" เด็ดขาด
 - Entry, SL, Target ทุกตัวต้องมี USD ต่อท้าย
+กฎเหล็กเรื่องชื่อบริษัท:
+- ใช้ "ชื่อบริษัท" ที่อยู่ในข้อมูลตลาดข้างบนเท่านั้น ห้ามเดาชื่อบริษัทจาก Ticker เด็ดขาด
+- ถ้าข้อมูลไม่มีชื่อบริษัท ให้เขียนแค่ Ticker อย่าแต่งชื่อเอง
 
 ห้ามใช้ # ** __ เด็ดขาด
 ทุกหัวข้อต้องมี emoji นำหน้าและขึ้นบรรทัดใหม่เสมอ
@@ -3247,7 +3277,7 @@ function callOpenRouterNews(prompt) {
       "method": "post",
       "headers": { "Authorization": "Bearer " + config.openRouterKey, "Content-Type": "application/json", "HTTP-Referer": WEB_REFERER },
       "payload": JSON.stringify({
-        "model": "google/gemma-4-31b-it",
+        "model": "google/gemma-4-26b-a4b-it",
         "stream": false,
         "messages": [
           { "role": "system", "content": "คุณคือ Bestie นักวิเคราะห์การลงทุนสไตล์เพื่อนสาว เขียนภาษาไทยเป็นกันเอง ห้ามอ้างชื่อเว็บหรือสำนักข่าว ห้ามใช้ # ** __ เขียนเหมือนวิเคราะห์เองจากความรู้" },
@@ -3265,7 +3295,7 @@ function callOpenRouterNews(prompt) {
 function callOpenRouter(prompt) {
   try {
     const config = getConfig();
-    const res    = UrlFetchApp.fetch("https://openrouter.ai/api/v1/chat/completions", { "method": "post", "headers": { "Authorization": "Bearer " + config.openRouterKey, "Content-Type": "application/json", "HTTP-Referer": WEB_REFERER }, "payload": JSON.stringify({ "model": "google/gemma-4-31b-it", "stream": false, "messages": [{ "role": "system", "content": "ผู้เชี่ยวชาญตอบภาษาไทย ห้ามใช้ # ** __" }, { "role": "user", "content": prompt }], "temperature": 0.3, "max_tokens": 1200 }), "muteHttpExceptions": true });
+    const res    = UrlFetchApp.fetch("https://openrouter.ai/api/v1/chat/completions", { "method": "post", "headers": { "Authorization": "Bearer " + config.openRouterKey, "Content-Type": "application/json", "HTTP-Referer": WEB_REFERER }, "payload": JSON.stringify({ "model": "google/gemma-4-26b-a4b-it", "stream": false, "messages": [{ "role": "system", "content": "ผู้เชี่ยวชาญตอบภาษาไทย ห้ามใช้ # ** __" }, { "role": "user", "content": prompt }], "temperature": 0.3, "max_tokens": 1200 }), "muteHttpExceptions": true });
     return JSON.parse(res.getContentText())?.choices?.[0]?.message?.content?.trim() || "ขออภัย ขัดข้อง 🙏";
   } catch (e) { return "ขออภัย ขัดข้อง 😅"; }
 }
@@ -3273,7 +3303,7 @@ function callOpenRouter(prompt) {
 function callOpenRouterBrief(prompt) {
   try {
     const config = getConfig();
-    const res    = UrlFetchApp.fetch("https://openrouter.ai/api/v1/chat/completions", { "method": "post", "headers": { "Authorization": "Bearer " + config.openRouterKey, "Content-Type": "application/json", "HTTP-Referer": WEB_REFERER }, "payload": JSON.stringify({ "model": "google/gemma-4-31b-it", "stream": false, "messages": [{ "role": "system", "content": "ผู้เชี่ยวชาญตอบภาษาไทย ห้ามใช้ # ** __" }, { "role": "user", "content": prompt }], "temperature": 0.5, "max_tokens": 1800 }), "muteHttpExceptions": true });
+    const res    = UrlFetchApp.fetch("https://openrouter.ai/api/v1/chat/completions", { "method": "post", "headers": { "Authorization": "Bearer " + config.openRouterKey, "Content-Type": "application/json", "HTTP-Referer": WEB_REFERER }, "payload": JSON.stringify({ "model": "google/gemma-4-26b-a4b-it", "stream": false, "messages": [{ "role": "system", "content": "ผู้เชี่ยวชาญตอบภาษาไทย ห้ามใช้ # ** __" }, { "role": "user", "content": prompt }], "temperature": 0.5, "max_tokens": 1800 }), "muteHttpExceptions": true });
     return JSON.parse(res.getContentText())?.choices?.[0]?.message?.content?.trim() || "ขออภัย ขัดข้อง 🙏";
   } catch (e) { return "ขออภัย ขัดข้อง 😅"; }
 }
@@ -3283,7 +3313,7 @@ function callOpenRouterGroup(prompt) { return callOpenRouter(prompt); }
 function callOpenRouterSimple(prompt) {
   try {
     const config = getConfig();
-    const res    = UrlFetchApp.fetch("https://openrouter.ai/api/v1/chat/completions", { "method": "post", "headers": { "Authorization": "Bearer " + config.openRouterKey, "Content-Type": "application/json", "HTTP-Referer": WEB_REFERER }, "payload": JSON.stringify({ "model": "google/gemma-4-31b-it", "stream": false, "messages": [{ "role": "system", "content": "ตอบแค่ Ticker" }, { "role": "user", "content": prompt }], "temperature": 0.1, "max_tokens": 20 }), "muteHttpExceptions": true });
+    const res    = UrlFetchApp.fetch("https://openrouter.ai/api/v1/chat/completions", { "method": "post", "headers": { "Authorization": "Bearer " + config.openRouterKey, "Content-Type": "application/json", "HTTP-Referer": WEB_REFERER }, "payload": JSON.stringify({ "model": "google/gemma-4-26b-a4b-it", "stream": false, "messages": [{ "role": "system", "content": "ตอบแค่ Ticker" }, { "role": "user", "content": prompt }], "temperature": 0.1, "max_tokens": 20 }), "muteHttpExceptions": true });
     return JSON.parse(res.getContentText())?.choices?.[0]?.message?.content?.trim() || "NO";
   } catch (e) { return "NO"; }
 }
@@ -3717,7 +3747,7 @@ const NEWHIGH_CONFIG = {
   maxResults:    20,
   minPrice:      5,
   minVolume:     500000,
-  cooldownMin:   60,
+  cooldownMin:   240,
   alertOncePerDay: true
 };
 
@@ -3736,6 +3766,9 @@ function fetch52WeekHighScreener() {
       if (!q.symbol || !q.regularMarketPrice) return;
       if (q.regularMarketPrice < NEWHIGH_CONFIG.minPrice) return;
       if ((q.regularMarketVolume || 0) < NEWHIGH_CONFIG.minVolume) return;
+      // แทรกตรงนี้ค่า 🎯
+      const isExact = q.regularMarketPrice >= (q.fiftyTwoWeekHigh || q.regularMarketPrice) * 0.999;
+      if (!isExact) return;
       results.push({
         symbol: q.symbol, name: q.shortName || q.longName || q.symbol,
         price: q.regularMarketPrice, change: q.regularMarketChange || 0,
@@ -3761,6 +3794,10 @@ function fetch52WeekHighScreener() {
         if (q.regularMarketPrice < NEWHIGH_CONFIG.minPrice) return;
         if ((q.regularMarketVolume || 0) < NEWHIGH_CONFIG.minVolume) return;
         if ((q.regularMarketChangePercent || 0) < 3) return;
+
+        // แทรกตรงนี้ค่า 🎯
+        const isExact = q.regularMarketPrice >= (q.fiftyTwoWeekHigh || q.regularMarketPrice) * 0.999;
+        if (!isExact) return;
         results.push({
           symbol: q.symbol, name: q.shortName || q.longName || q.symbol,
           price: q.regularMarketPrice, change: q.regularMarketChange || 0,
@@ -3779,13 +3816,31 @@ function fetch52WeekHighScreener() {
 }
 
 function autoScanNewHighAlert() {
-  // [v3.24] Block weekend — ตลาดปิด
   if (isWeekend()) { console.log("Weekend — skipping autoScanNewHighAlert"); return; }
+  
   try {
     const props   = PropertiesService.getScriptProperties();
     const now     = new Date();
+    
+    // 🕒 คำนวณเวลารวมเป็นนาทีเพื่อความแม่นยำ (20:30 น. = 1230 นาที, 04:00 น. = 240 นาที)
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    const totalMinutes = (currentHour * 60) + currentMinute;
+
+   // NYSE เปิด 09:30 ET = 20:30 BKK (ฤดูหนาว) หรือ 21:30 BKK (ฤดูร้อน DST)
+// ใช้ 21:30 เป็น conservative:
+const MARKET_OPEN_MIN  = 21 * 60 + 30; // 21:30 BKK
+const MARKET_CLOSE_MIN =  4 * 60 + 0;  // 04:00 BKK วันถัดไป
+
+// ปรับ logic:
+const isMarketClosed = (totalMinutes >= MARKET_CLOSE_MIN && totalMinutes < MARKET_OPEN_MIN);
+if (isMarketClosed) {
+  console.log("Market closed — skip scan");
+  return;
+}
+
     const dateStr = now.toLocaleDateString("th-TH");
-    const timeStr = now.getHours() + ":" + String(now.getMinutes()).padStart(2, "0");
+    const timeStr = String(currentHour).padStart(2, "0") + ":" + String(currentMinute).padStart(2, "0");
 
     const lastRunKey = "LAST_NEWHIGH_SCAN_V2";
     const lastRun    = props.getProperty(lastRunKey);
@@ -3796,7 +3851,7 @@ function autoScanNewHighAlert() {
     props.setProperty(lastRunKey, now.toISOString());
 
     const stocks = fetch52WeekHighScreener();
-    if (stocks.length === 0) { console.log("No 52W high stocks found at " + timeStr); return; }
+    if (stocks.length === 0) { console.log("No Exact 52W high stocks found at " + timeStr); return; }
 
     const newStocks = NEWHIGH_CONFIG.alertOncePerDay
       ? stocks.filter(function(s) {
@@ -3808,7 +3863,7 @@ function autoScanNewHighAlert() {
       : stocks;
 
     if (newStocks.length === 0) { console.log("All " + stocks.length + " stocks already alerted today."); return; }
-    console.log("Broadcasting " + newStocks.length + " new highs: " + newStocks.map(s => s.symbol).join(", "));
+    console.log("Broadcasting " + newStocks.length + " new exact highs: " + newStocks.map(s => s.symbol).join(", "));
     broadcastToLine(buildNewHighFlexV2(newStocks, dateStr, timeStr));
   } catch (e) { console.error("autoScanNewHighAlert Error: " + e.toString()); }
 }
@@ -3819,14 +3874,12 @@ function buildNewHighFlexV2(stocks, dateStr, timeStr) {
   const buildStockRow = function(s) {
     const sign       = s.changePct >= 0 ? "+" : "";
     const pctText    = sign + s.changePct.toFixed(2) + "%";
-    const distToHigh = ((s.price - s.high52w) / s.high52w * 100).toFixed(1);
-    const isExact    = s.price >= s.high52w * 0.999;
     const volM       = (s.volume / 1000000).toFixed(1) + "M";
     const capB       = s.marketCap >= 1e12 ? (s.marketCap / 1e12).toFixed(1) + "T" : s.marketCap >= 1e9 ? (s.marketCap / 1e9).toFixed(1) + "B" : "-";
 
     return {
       "type": "box", "layout": "vertical",
-      "backgroundColor": isExact ? "#F0FFF4" : "#FFF8E1",
+      "backgroundColor": "#F0FFF4", // 🟢 เป็นสีเขียว Exact High ทั้งหมดค่ะ
       "cornerRadius": "10px", "paddingAll": "12px", "margin": "sm",
       "action": { "type": "message", "label": s.symbol, "text": s.symbol },
       "contents": [
@@ -3834,11 +3887,11 @@ function buildNewHighFlexV2(stocks, dateStr, timeStr) {
           "type": "box", "layout": "horizontal",
           "contents": [
             { "type": "box", "layout": "vertical", "flex": 3, "contents": [
-              { "type": "text", "text": (isExact ? "🚀 " : "📈 ") + s.symbol, "weight": "bold", "size": "md", "color": isExact ? "#1B5E20" : "#E65100" },
+              { "type": "text", "text": "🚀 " + s.symbol, "weight": "bold", "size": "md", "color": "#1B5E20" },
               { "type": "text", "text": s.name, "size": "xs", "color": "#888888", "margin": "xs", "wrap": true }
             ]},
             { "type": "box", "layout": "vertical", "flex": 2, "alignItems": "flex-end", "contents": [
-              { "type": "text", "text": "$" + s.price.toFixed(2), "weight": "bold", "size": "md", "color": isExact ? "#1B5E20" : "#E65100", "align": "end" },
+              { "type": "text", "text": "$" + s.price.toFixed(2), "weight": "bold", "size": "md", "color": "#1B5E20", "align": "end" },
               { "type": "text", "text": pctText + " วันนี้", "size": "xs", "color": s.changePct >= 0 ? "#2E7D32" : "#C62828", "align": "end" }
             ]}
           ]
@@ -3846,7 +3899,7 @@ function buildNewHighFlexV2(stocks, dateStr, timeStr) {
         {
           "type": "box", "layout": "horizontal", "margin": "sm",
           "contents": [
-            { "type": "text", "text": isExact ? "✅ แตะ 52W High!" : "📍 ใกล้ High " + distToHigh + "%", "size": "xs", "color": isExact ? "#2E7D32" : "#F57F17", "weight": "bold", "flex": 3 },
+            { "type": "text", "text": "✅ แตะ 52W High!", "size": "xs", "color": "#2E7D32", "weight": "bold", "flex": 3 },
             { "type": "text", "text": "Vol: " + volM + " | " + capB, "size": "xxs", "color": "#AAAAAA", "align": "end", "flex": 3 }
           ]
         },
@@ -3862,8 +3915,6 @@ function buildNewHighFlexV2(stocks, dateStr, timeStr) {
     };
   };
 
-  const exactStocks = stocks.filter(s => s.price >= s.high52w * 0.999);
-  const nearStocks  = stocks.filter(s => s.price <  s.high52w * 0.999);
   const quickReplyItems = stocks.slice(0, 4).map(function(s) {
     return { "type": "action", "action": { "type": "message", "label": "📊 " + s.symbol, "text": s.symbol } };
   });
@@ -3871,21 +3922,21 @@ function buildNewHighFlexV2(stocks, dateStr, timeStr) {
 
   return {
     "type": "flex",
-    "altText": "🚀 มีหุ้น " + stocks.length + " ตัวแตะ 52-Week High แล้ว! มาดูกันเลยค่า",
+    "altText": "🚀 มีหุ้น " + stocks.length + " ตัวแตะ Exact 52-Week High แล้วค่า!",
     "quickReply": { "items": quickReplyItems },
     "contents": {
       "type": "bubble", "size": "giga",
       "header": {
         "type": "box", "layout": "vertical",
-        "backgroundColor": exactStocks.length > 0 ? "#1B5E20" : "#BF360C",
+        "backgroundColor": "#1B5E20", // 🟢 เปลี่ยนหัวการ์ดเป็นสีเขียวเข้มเพื่อความสำเร็จ
         "paddingAll": "18px",
         "contents": [
           {
             "type": "box", "layout": "horizontal",
             "contents": [
               { "type": "box", "layout": "vertical", "flex": 4, "contents": [
-                { "type": "text", "text": "🚀 หุ้นพวกนี้แตะ 52-Week High แล้วนะ!", "weight": "bold", "size": "lg", "color": "#FFFFFF" },
-                { "type": "text", "text": dateStr + " เวลา " + timeStr + " น.", "size": "xs", "color": "#FFFFFF99", "margin": "xs" }
+                { "type": "text", "text": "🚀 หุ้นแตะ Exact 52-Week High!", "weight": "bold", "size": "lg", "color": "#FFFFFF" },
+                { "type": "text", "text": dateStr + " เวลา " + timeStr + " น. (รอบ 4 ชม.)", "size": "xs", "color": "#FFFFFF99", "margin": "xs" }
               ]},
               { "type": "box", "layout": "vertical", "flex": 1, "alignItems": "flex-end", "justifyContent": "center", "contents": [
                 { "type": "text", "text": stocks.length + "", "weight": "bold", "size": "3xl", "color": "#FFFFFF" },
@@ -3896,23 +3947,17 @@ function buildNewHighFlexV2(stocks, dateStr, timeStr) {
           {
             "type": "box", "layout": "horizontal", "margin": "md", "spacing": "sm",
             "contents": [
-              { "type": "box", "layout": "vertical", "backgroundColor": "#FFFFFF33", "cornerRadius": "20px", "paddingAll": "6px", "flex": 1, "contents": [{ "type": "text", "text": "🚀 Exact: " + exactStocks.length, "size": "xs", "color": "#FFFFFF", "align": "center", "weight": "bold" }] },
-              { "type": "box", "layout": "vertical", "backgroundColor": "#FFFFFF22", "cornerRadius": "20px", "paddingAll": "6px", "flex": 1, "contents": [{ "type": "text", "text": "📈 Near: " + nearStocks.length, "size": "xs", "color": "#FFFFFF", "align": "center" }] },
-              { "type": "box", "layout": "vertical", "backgroundColor": "#FFFFFF22", "cornerRadius": "20px", "paddingAll": "6px", "flex": 1, "contents": [{ "type": "text", "text": "⚡ Auto Scan", "size": "xs", "color": "#FFFFFF", "align": "center" }] }
+              { "type": "box", "layout": "vertical", "backgroundColor": "#FFFFFF33", "cornerRadius": "20px", "paddingAll": "6px", "flex": 1, "contents": [{ "type": "text", "text": "🔥 Exact High Only", "size": "xs", "color": "#FFFFFF", "align": "center", "weight": "bold" }] },
+              { "type": "box", "layout": "vertical", "backgroundColor": "#FFFFFF22", "cornerRadius": "20px", "paddingAll": "6px", "flex": 1, "contents": [{ "type": "text", "text": "⏱️ ทุก 4 ชั่วโมง", "size": "xs", "color": "#FFFFFF", "align": "center" }] }
             ]
           }
         ]
       },
       "body": {
         "type": "box", "layout": "vertical", "paddingAll": "12px", "spacing": "none",
-        "contents": (exactStocks.length > 0 ? [
-            { "type": "text", "text": "🚀 แตะ 52-Week High แล้วจ้า!", "weight": "bold", "size": "sm", "color": "#1B5E20", "margin": "sm" }
-          ].concat(exactStocks.map(buildStockRow)) : []
-        ).concat(
-          nearStocks.length > 0 ? [
-            { "type": "text", "text": "📈 ใกล้ 52W High มากๆ (< 1%)", "weight": "bold", "size": "sm", "color": "#E65100", "margin": exactStocks.length > 0 ? "lg" : "sm" }
-          ].concat(nearStocks.map(buildStockRow)) : []
-        ).concat([
+        "contents": [
+          { "type": "text", "text": "🚀 รายชื่อหุ้นที่ทะลุ 52-Week High สำเร็จจ้า:", "weight": "bold", "size": "sm", "color": "#1B5E20", "margin": "sm" }
+        ].concat(stocks.map(buildStockRow)).concat([
           {
             "type": "box", "layout": "vertical", "backgroundColor": "#E8F5E9", "cornerRadius": "10px", "paddingAll": "12px", "margin": "lg",
             "contents": [{ "type": "text", "text": "💡 กดชื่อหุ้นใน Quick Reply ด้านล่างหรือพิมพ์ชื่อ Ticker เพื่อให้ Bestie วิเคราะห์ให้เลยค่า ✨", "size": "xs", "color": "#2E7D32", "wrap": true, "align": "center" }]
@@ -3921,7 +3966,7 @@ function buildNewHighFlexV2(stocks, dateStr, timeStr) {
       },
       "footer": {
         "type": "box", "layout": "vertical", "backgroundColor": "#F5F5F5", "paddingAll": "10px",
-        "contents": [{ "type": "text", "text": "⚠️ ดึงข้อมูลจาก Yahoo Finance Screener | scan อัตโนมัติทุก 30 นาที (จ.-ศ. เท่านั้น)", "size": "xxs", "color": "#AAAAAA", "align": "center", "wrap": true }]
+        "contents": [{ "type": "text", "text": "⚠️ ข้อมูล Yahoo Finance Screener | สแกนอัตโนมัติรอบละ 4 ชม. ", "size": "xxs", "color": "#AAAAAA", "align": "center", "wrap": true }]
       }
     }
   };
@@ -3949,7 +3994,7 @@ function testBroadcast() {
 }
 function updateToken() {
   PropertiesService.getScriptProperties()
-    .setProperty("LINE_ACCESS_TOKEN", "mLzOBtjElEV2JyEoAyAFf01ErKxsrf9r/VIkn5ctorCvNZEqBJAfLUZQ5xo2MY0fPLHYxSsaa2rhsgOqFFEy5/p3xF2fNbBGnvwaJH58e3w4FZ0gMM1l1BF5D//rGEGy40ay7ttU5jtC8wOSXk6QGgdB04t89/1O/w1cDnyilFU=");
+    .setProperty("LINE_ACCESS_TOKEN", "YOUR_LINE_ACCESS_TOKEN");
 }
 function debugBroadcast() {
   const token = PropertiesService.getScriptProperties().getProperty("LINE_ACCESS_TOKEN");
@@ -4034,7 +4079,7 @@ function detectTickerInput(input) {
   // ข้าม menu commands
   var menuCommands = ["เมนู","menu","help","สวัสดี","hi","hello","ตลาดวันนี้","สรุปข่าว",
     "ทองคำ","ราคาทองไทย","แนะนำหุ้นอเมริกา","แนะนำคริปโต","แนะนำกลุ่มหุ้นน่าสนใจ",
-    "วางแผนเกษียณ","sig","รายการโปรด","watchlist","portfolio","etf","market pulse",
+    "วางแผนเกษียณ","sig","รายการโปรด","watchlist","portfolio","etf","รู้ยัง? ตลาดหุ้นวันนี้มีอะไร",
     "trending","most active","แนวรับแนวต้านทอง","บันทึก","ลบ","save","remove"];
   if (menuCommands.some(function(cmd) { return low === cmd || low.startsWith(cmd + " "); })) {
     return { isTicker: false, symbol: "" };
@@ -5331,7 +5376,7 @@ function callOpenRouterDeepAnalysis(prompt) {
         "HTTP-Referer": WEB_REFERER
       },
       "payload": JSON.stringify({
-        "model": "google/gemma-4-31b-it",
+        "model": "google/gemma-4-26b-a4b-it",
         "stream": false,
         "messages": [
           {
@@ -5538,7 +5583,7 @@ function buildDeepFlexMessage(symbol, stockName, mtfAnalysis, tradeSetup, backte
     { "type": "action", "action": { "type": "message", "label": "📋 รายการโปรด", "text": "รายการโปรด" } },
     { "type": "action", "action": { "type": "message", "label": "🏠 เมนู",       "text": "เมนู" } },
     { "type": "action", "action": { "type": "message", "label": "📰 ข่าวตลาด",  "text": "สรุปข่าว" } },
-    { "type": "action", "action": { "type": "message", "label": "📊 Market Pulse","text": "ตลาดวันนี้" } }
+    { "type": "action", "action": { "type": "message", "label": "📊 รู้ยัง? ตลาดหุ้นวันนี้มีอะไร","text": "ตลาดวันนี้" } }
   ];
  
   return {
@@ -5864,5 +5909,1118 @@ function quickTestDeepBroadcast() {
 //
 //  // ── Ticker lookup เดิม (เป็น fallback) ──
 //  ... (โค้ดเดิม)
+
+// ═══════════════════════════════════════════════════════════════
+//  SWING TRADE MODULE — Final Version
+//  Reddit JSON (ไม่ต้อง key) + Google CSE (ถ้ามี key เปิดอัตโนมัติ)
+//
+//  Script Properties ที่ต้องใส่:
+//  GOOGLE_CSE_API_KEY  = AIzaSy...
+//  GOOGLE_CSE_ID       = 03a1f3e1a10df4a73
+//
+//  4 Layers:
+//  1. Yahoo Screener   — Gainers / Actives / Trending / 52WH
+//  2. RSS News         — ข่าวสำนักใหญ่ กรองเฉพาะ stock-relevant
+//  3. Reddit           — JSON direct (ฟรี) + Google CSE (ถ้ามี key)
+//  4. Earnings Calendar — Yahoo Finance calendarEvents 14 วัน
+// ═══════════════════════════════════════════════════════════════
+
+var SWING_ROUND_KEY_PREFIX = "SWING_ROUND_";
+
+var SWING_FOCUS_MODES = [
+  {
+    id:    "MOMENTUM",
+    label: "🚀 Momentum Breakout",
+    sub:   "Volume พุ่ง + ข่าวดี + Reddit buzz สูง",
+    lens:  "เน้นหุ้นที่ Volume สูงผิดปกติ (>1.5×avg), ราคาใกล้แตก 52W High หรือ resistance, มี positive catalyst จากข่าว + Reddit พูดถึงเยอะในเชิงบวก"
+  },
+  {
+    id:    "REVERSAL",
+    label: "🔄 Oversold Reversal",
+    sub:   "หุ้นแข็งแกร่งย่อลง Reddit ยังไม่ panic รอเด้ง",
+    lens:  "เน้นหุ้น Large/Mid Cap ที่ RSI ต่ำกว่า 40, อยู่ใกล้ support สำคัญ, Reddit score สูงแต่ sentiment mixed/neutral (ไม่ panic), มี upcoming catalyst ใน 14 วัน"
+  },
+  {
+    id:    "CATALYST",
+    label: "📅 Catalyst Play",
+    sub:   "มี event สำคัญใน 7-14 วัน + Reddit กำลัง buzz",
+    lens:  "เน้นหุ้นที่มี upcoming catalyst ชัด เช่น earnings, FDA, FOMC play และ Reddit กำลังพูดถึงอยู่ (posts ใหม่, score สูง) พื้นฐานบริษัทดี"
+  }
+];
+
+// ─── getSwingRound ────────────────────────────────────────────
+function getSwingRound(userId) {
+  var props   = PropertiesService.getScriptProperties();
+  var dateStr = new Date().toLocaleDateString("th-TH");
+  var key     = SWING_ROUND_KEY_PREFIX + (userId || "global") + "_" + dateStr;
+  var current = parseInt(props.getProperty(key) || "0", 10);
+  props.setProperty(key, String((current + 1) % SWING_FOCUS_MODES.length));
+  return current;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  LAYER 1: Yahoo Screener
+// ═══════════════════════════════════════════════════════════════
+
+function fetchSwingCandidates() {
+  var candidates = {};
+
+  var sources = [
+    { scrId: "day_gainers",  tag: "gainers" },
+    { scrId: "most_actives", tag: "actives" },
+    { scrId: "52_wk_high",   tag: "52wk"   }
+  ];
+
+  sources.forEach(function(src) {
+    try {
+      var url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved" +
+                "?formatted=false&lang=en-US&region=US&scrIds=" + src.scrId + "&count=20";
+      var quotes = JSON.parse(
+        UrlFetchApp.fetch(url, { muteHttpExceptions: true, deadline: 8 }).getContentText()
+      )?.finance?.result?.[0]?.quotes || [];
+      quotes.forEach(function(q) {
+        if (!q.symbol || !q.regularMarketPrice) return;
+        if (q.regularMarketPrice < 10) return;
+        if ((q.marketCap || 0) < 1e9)  return;
+        if (!candidates[q.symbol]) {
+          candidates[q.symbol] = {
+            symbol:    q.symbol,
+            name:      (q.shortName || q.symbol).substring(0, 22),
+            price:     q.regularMarketPrice,
+            pct:       q.regularMarketChangePercent || 0,
+            volume:    q.regularMarketVolume || 0,
+            avgVol:    q.averageDailyVolume3Month || 0,
+            marketCap: q.marketCap || 0,
+            high52w:   q.fiftyTwoWeekHigh || 0,
+            low52w:    q.fiftyTwoWeekLow  || 0,
+            source:    src.tag
+          };
+        }
+      });
+    } catch(e) { console.error("Screener " + src.scrId + ": " + e); }
+  });
+
+  // Trending
+  try {
+    var tq = JSON.parse(
+      UrlFetchApp.fetch(
+        "https://query1.finance.yahoo.com/v1/finance/trending/US?count=15&useQuotes=true",
+        { muteHttpExceptions: true, deadline: 8 }
+      ).getContentText()
+    )?.finance?.result?.[0]?.quotes || [];
+    tq.forEach(function(q) {
+      if (!q.symbol || !q.regularMarketPrice || q.regularMarketPrice < 10) return;
+      if (!candidates[q.symbol]) {
+        candidates[q.symbol] = {
+          symbol:    q.symbol,
+          name:      (q.shortName || q.symbol).substring(0, 22),
+          price:     q.regularMarketPrice,
+          pct:       q.regularMarketChangePercent || 0,
+          volume:    q.regularMarketVolume || 0,
+          avgVol:    q.averageDailyVolume3Month || 0,
+          marketCap: q.marketCap || 0,
+          high52w:   q.fiftyTwoWeekHigh || 0,
+          low52w:    q.fiftyTwoWeekLow  || 0,
+          source:    "trending"
+        };
+      }
+    });
+  } catch(e) {}
+
+  var list = Object.values(candidates);
+  list.sort(function(a, b) {
+    var rA = a.avgVol > 0 ? a.volume / a.avgVol : 1;
+    var rB = b.avgVol > 0 ? b.volume / b.avgVol : 1;
+    return (rB + Math.abs(b.pct)) - (rA + Math.abs(a.pct));
+  });
+  return list;
+}
+
+function formatCandidatesText(list) {
+  if (!list || list.length === 0) return "ไม่มีข้อมูล";
+  return list.slice(0, 25).map(function(s) {
+    var vr  = s.avgVol > 0 ? (s.volume / s.avgVol).toFixed(1) : "?";
+    var d52 = s.high52w > 0 ? ((s.price / s.high52w - 1) * 100).toFixed(1) : "?";
+    var cap = s.marketCap >= 1e12 ? (s.marketCap/1e12).toFixed(1)+"T"
+            : s.marketCap >= 1e9  ? (s.marketCap/1e9).toFixed(1)+"B" : "-";
+    return s.symbol + " $" + s.price.toFixed(2) +
+           " " + (s.pct >= 0 ? "+" : "") + s.pct.toFixed(1) + "%" +
+           " | Vol:" + vr + "×" +
+           " | MCap:" + cap +
+           " | vs52H:" + d52 + "%" +
+           " [" + s.source + "]";
+  }).join("\n");
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  LAYER 2: RSS News
+// ═══════════════════════════════════════════════════════════════
+
+function fetchSwingNewsRSS(topSymbols) {
+  var allNews    = [];
+  var seenTitles = {};
+  var stockKw    = /earnings|revenue|guidance|upgrade|downgrade|buy|sell|target|beat|miss|forecast|analyst|catalyst|momentum|breakout|rally|selloff|acquisition|merger|FDA|approval|contract|deal/i;
+
+  var feeds = [
+    "https://feeds.reuters.com/reuters/businessNews",
+    "https://www.cnbc.com/id/100003114/device/rss/rss.html",
+    "https://www.cnbc.com/id/10000664/device/rss/rss.html",
+    "https://www.marketwatch.com/rss/topstories",
+    "https://finance.yahoo.com/rss/topfinstories",
+    "https://news.google.com/rss/search?q=stock+earnings+analyst+US&hl=en-US&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=nasdaq+sp500+momentum+breakout&hl=en-US&gl=US&ceid=US:en"
+  ];
+
+  (topSymbols || []).slice(0, 5).forEach(function(sym) {
+    feeds.push("https://finance.yahoo.com/rss/headline?s=" + sym);
+  });
+
+  feeds.forEach(function(url) {
+    try {
+      var xml   = UrlFetchApp.fetch(url, { muteHttpExceptions: true, deadline: 6 }).getContentText();
+      var items = xml.match(/<item>[\s\S]*?<\/item>/g) || [];
+      items.forEach(function(block) {
+        var title = "";
+        var cd = block.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/);
+        if (cd) { title = cd[1].trim(); }
+        else {
+          var pm = block.match(/<title>(.*?)<\/title>/);
+          if (pm) title = pm[1].replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").trim();
+        }
+        if (!title || seenTitles[title] || !stockKw.test(title)) return;
+        seenTitles[title] = true;
+        allNews.push(title);
+      });
+    } catch(e) {}
+  });
+
+  return allNews.slice(0, 15);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  LAYER 3A: Reddit JSON API (ไม่ต้องมี key)
+// ═══════════════════════════════════════════════════════════════
+
+function fetchRedditDirect(symbols) {
+  var bySymbol   = {};
+  var wsbHot     = [];
+  var targetSyms = (symbols || []).slice(0, 6);
+
+  // User-Agent แบบ browser เพื่อหลีกเลี่ยง Reddit block
+  var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36";
+
+  // ── helper: fetch Reddit JSON พร้อม retry 1 ครั้ง ──
+  function redditFetch(url) {
+    try {
+      var res = UrlFetchApp.fetch(url, {
+        muteHttpExceptions: true, deadline: 10,
+        headers: {
+          "User-Agent": UA,
+          "Accept": "application/json"
+        }
+      });
+      var code = res.getResponseCode();
+      // 429 rate limit → รอแล้ว retry
+      if (code === 429) {
+        Utilities.sleep(2000);
+        res = UrlFetchApp.fetch(url, {
+          muteHttpExceptions: true, deadline: 10,
+          headers: { "User-Agent": UA, "Accept": "application/json" }
+        });
+      }
+      if (res.getResponseCode() !== 200) return [];
+      return JSON.parse(res.getContentText())?.data?.children || [];
+    } catch(e) {
+      console.error("redditFetch error: " + e);
+      return [];
+    }
+  }
+
+  // ── sentiment helper ──
+  var bullKw = /bull|buy|long|breakout|moon|call|beat|upgrade|strong|growth|rally|surge|pump|soar/i;
+  var bearKw = /bear|sell|short|drop|crash|put|miss|downgrade|weak|decline|fall|dump|rekt|tank/i;
+
+  function calcSentiment(posts) {
+    var bc = 0, sc = 0;
+    posts.forEach(function(p) {
+      if (bullKw.test(p.title)) bc++;
+      if (bearKw.test(p.title)) sc++;
+    });
+    return bc > sc ? "Bullish 🟢" : sc > bc ? "Bearish 🔴" : "Mixed ⚪";
+  }
+
+  // ── ค้นหาแต่ละ symbol ──
+  targetSyms.forEach(function(sym) {
+    bySymbol[sym] = { posts: [], totalScore: 0, sentiment: "N/A" };
+    var allPosts = [];
+
+    // Strategy 1: ค้นใน r/stocks
+    allPosts = allPosts.concat(redditFetch(
+      "https://www.reddit.com/r/stocks/search.json?q=" +
+      encodeURIComponent(sym) + "&sort=new&limit=8&restrict_sr=1&t=week"
+    ));
+    Utilities.sleep(150);
+
+    // Strategy 2: ค้นใน r/wallstreetbets
+    allPosts = allPosts.concat(redditFetch(
+      "https://www.reddit.com/r/wallstreetbets/search.json?q=" +
+      encodeURIComponent(sym) + "&sort=new&limit=5&restrict_sr=1&t=week"
+    ));
+    Utilities.sleep(150);
+
+    // Strategy 3: ค้นใน r/investing + r/StockMarket + r/options
+    allPosts = allPosts.concat(redditFetch(
+      "https://www.reddit.com/r/investing+StockMarket+options/search.json?q=" +
+      encodeURIComponent(sym) + "&sort=new&limit=5&restrict_sr=1&t=week"
+    ));
+    Utilities.sleep(150);
+
+    // Strategy 4: ค้นหา dedicated subreddit ของ ticker เอง
+    // เช่น r/NVTS_Stock, r/NVDA, r/PLTR, r/AMD ฯลฯ
+    var tickerSubs = [
+      sym,                    // เช่น r/NVDA
+      sym + "_Stock",         // เช่น r/NVTS_Stock
+      sym + "Stock",          // เช่น r/NVTSStock
+    ];
+    tickerSubs.forEach(function(subName) {
+      try {
+        var checkUrl = "https://www.reddit.com/r/" + subName + "/new.json?limit=8";
+        var res = UrlFetchApp.fetch(checkUrl, {
+          muteHttpExceptions: true, deadline: 8,
+          headers: { "User-Agent": UA, "Accept": "application/json" }
+        });
+        // ถ้า subreddit มีอยู่จริง (200) ดึงข้อมูล
+        if (res.getResponseCode() === 200) {
+          var subPosts = JSON.parse(res.getContentText())?.data?.children || [];
+          // กรองเฉพาะที่ไม่เก่าเกิน 14 วัน
+          var cutoff = Date.now() / 1000 - (14 * 86400);
+          subPosts = subPosts.filter(function(p) {
+            return (p.data?.created_utc || 0) > cutoff;
+          });
+          if (subPosts.length > 0) {
+            console.log("Found dedicated subreddit r/" + subName + " for " + sym + ": " + subPosts.length + " posts");
+            allPosts = allPosts.concat(subPosts);
+          }
+        }
+      } catch(e) {}
+      Utilities.sleep(150);
+    });
+
+    // Strategy 5: ค้นข้าม subreddit ทั้งหมด (global search)
+    // เพื่อจับ posts จาก subreddit อื่นๆ ที่ไม่รู้จักล่วงหน้า
+    var globalPosts = redditFetch(
+      "https://www.reddit.com/search.json?q=" +
+      encodeURIComponent(sym + " stock") +
+      "&sort=new&limit=10&t=week"
+    );
+    // กรองเฉพาะ finance-related subreddits
+    globalPosts = globalPosts.filter(function(p) {
+      var sub = (p.data?.subreddit || "").toLowerCase();
+      return /stock|invest|trading|finance|option|market|bull|bear|wall|earn|money/i.test(sub) ||
+             sub.toLowerCase().includes(sym.toLowerCase());
+    });
+    allPosts = allPosts.concat(globalPosts);
+    Utilities.sleep(150);
+
+    // dedup by title
+    var seenTitles = {};
+    allPosts = allPosts.filter(function(p) {
+      var t = p.data?.title || "";
+      if (!t || seenTitles[t]) return false;
+      seenTitles[t] = true;
+      return true;
+    });
+
+    // เก็บผลลัพธ์
+    allPosts.forEach(function(p) {
+      var d = p.data || {};
+      if (!d.title) return;
+      bySymbol[sym].posts.push({
+        title:    d.title,
+        score:    d.score || 0,
+        comments: d.num_comments || 0,
+        sub:      "r/" + (d.subreddit || "reddit"),
+        url:      "https://reddit.com" + (d.permalink || "")
+      });
+      bySymbol[sym].totalScore += (d.score || 0);
+    });
+
+    if (bySymbol[sym].posts.length > 0) {
+      bySymbol[sym].sentiment = calcSentiment(bySymbol[sym].posts);
+    }
+  });
+
+  // ── WSB hot posts ──
+  try {
+    var hotPosts = redditFetch("https://www.reddit.com/r/wallstreetbets/hot.json?limit=20");
+    hotPosts.forEach(function(p) {
+      var d = p.data || {};
+      if (d.title && d.score > 200) {
+        wsbHot.push(d.title.substring(0, 85) + " (↑" + d.score + ")");
+      }
+    });
+  } catch(e) {}
+
+  return { bySymbol: bySymbol, wsbHot: wsbHot.slice(0, 8) };
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  LAYER 3B: Google CSE Reddit Search (ถ้ามี key)
+// ═══════════════════════════════════════════════════════════════
+
+function fetchRedditCSE(symbols) {
+  try {
+    var props  = PropertiesService.getScriptProperties();
+    var apiKey = props.getProperty("GOOGLE_CSE_API_KEY") || "";
+    var cx     = props.getProperty("GOOGLE_CSE_ID")      || "";
+
+    if (!apiKey || !cx) return { available: false, items: [], text: "" };
+
+    // รวม symbols เป็น OR query เพื่อประหยัด quota (1 query ต่อครั้ง)
+    var symQuery = (symbols || []).slice(0, 6).join(" OR ");
+    var query    = "site:reddit.com " + symQuery +
+                   " (stocks OR investing OR wallstreetbets)";
+
+    var url = "https://www.googleapis.com/customsearch/v1" +
+              "?key=" + apiKey +
+              "&cx="  + cx +
+              "&q="   + encodeURIComponent(query) +
+              "&num=10" +
+              "&dateRestrict=w2" +
+              "&sort=date";
+
+    var json = JSON.parse(
+      UrlFetchApp.fetch(url, { muteHttpExceptions: true, deadline: 10 }).getContentText()
+    );
+
+    if (json.error) {
+      console.error("CSE error: " + json.error.message);
+      return { available: false, items: [], text: "CSE error: " + json.error.message };
+    }
+
+    var items = json.items || [];
+    var lines = items.map(function(item) {
+      var sub  = (item.link || "").match(/reddit\.com\/r\/([^\/]+)/);
+      var subS = sub ? "r/" + sub[1] : "reddit";
+      var snip = (item.snippet || "").replace(/\n/g," ").substring(0, 100);
+      return "[" + subS + "] " + item.title + "\n  → " + snip;
+    }).join("\n\n");
+
+    return {
+      available: true,
+      items:     items,
+      text:      "Google CSE Reddit (" + items.length + " results, 2 สัปดาห์):\n" + lines
+    };
+  } catch(e) {
+    console.error("fetchRedditCSE: " + e);
+    return { available: false, items: [], text: "" };
+  }
+}
+
+// ── รวม Reddit ทั้ง 2 แหล่ง ──
+function fetchCombinedReddit(symbols) {
+  var direct = fetchRedditDirect(symbols);
+  var cse    = fetchRedditCSE(symbols);
+  return { direct: direct, cse: cse };
+}
+
+function formatCombinedRedditForPrompt(reddit, symbols) {
+  var lines = [];
+
+  // Per-symbol sentiment จาก Reddit JSON
+  lines.push("── Reddit Sentiment per Symbol (JSON direct, 7 วัน) ──");
+  (symbols || []).slice(0, 6).forEach(function(sym) {
+    var r = (reddit.direct.bySymbol || {})[sym];
+    if (!r) return;
+    if (r.posts.length === 0) { lines.push(sym + ": ไม่พบ posts"); return; }
+    lines.push(sym + ": " + r.sentiment +
+               " | " + r.posts.length + " posts" +
+               " | totalScore:" + r.totalScore);
+    r.posts.slice(0, 2).forEach(function(p) {
+      lines.push("  • [" + p.sub + "] " + p.title.substring(0, 80) + " (↑" + p.score + ")");
+    });
+  });
+
+  // WSB Hot
+  if (reddit.direct.wsbHot && reddit.direct.wsbHot.length > 0) {
+    lines.push("\n── r/wallstreetbets Hot Posts ──");
+    reddit.direct.wsbHot.forEach(function(t) { lines.push("• " + t); });
+  }
+
+  // Google CSE (ถ้ามี)
+  if (reddit.cse.available && reddit.cse.text) {
+    lines.push("\n── " + reddit.cse.text);
+  }
+
+  return lines.join("\n");
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  LAYER 4: Earnings Calendar
+// ═══════════════════════════════════════════════════════════════
+
+function fetchEarningsForSwing() {
+  var events  = [];
+  var symbols = ["NVDA","AAPL","MSFT","GOOGL","META","AMZN","TSLA",
+                 "AMD","AVGO","PLTR","CRWD","PANW","NOW","SNOW",
+                 "JPM","GS","V","MA","XOM","CVX","NFLX","UBER","CRM"];
+
+  symbols.forEach(function(sym) {
+    try {
+      var cal = JSON.parse(
+        UrlFetchApp.fetch(
+          "https://query1.finance.yahoo.com/v10/finance/quoteSummary/" +
+          encodeURIComponent(sym) + "?modules=calendarEvents",
+          { muteHttpExceptions: true, deadline: 5 }
+        ).getContentText()
+      )?.quoteSummary?.result?.[0]?.calendarEvents;
+
+      if (cal?.earnings?.earningsDate?.length > 0) {
+        var fmt  = cal.earnings.earningsDate[0]?.fmt || "";
+        if (!fmt) return;
+        var days = Math.round((new Date(fmt) - new Date()) / 86400000);
+        if (days >= -1 && days <= 14) {
+          events.push(sym + ": Earnings " + fmt + " (อีก " + days + " วัน)");
+        }
+      }
+    } catch(e) {}
+    Utilities.sleep(60);
+  });
+
+  return events.length > 0 ? events.join("\n") : "ไม่พบ earnings ใน 14 วันข้างหน้า";
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  BUILD PROMPT
+// ═══════════════════════════════════════════════════════════════
+
+function buildSwingPrompt(focusMode, roundNum,
+                          candidatesText, newsLines,
+                          redditText, earningsText) {
+  var spyP  = fetchBriefPrice("SPY");
+  var qqqP  = fetchBriefPrice("QQQ");
+  var vixP  = fetchBriefPrice("^VIX");
+  var dxyP  = fetchBriefPrice("DX-Y.NYB");
+  var today = new Date().toLocaleDateString("th-TH");
+
+  return (
+    "คุณคือ Bestie นักวิเคราะห์ Swing Trade มืออาชีพ ตอบภาษาไทย เป็นกันเอง\n" +
+    HUMANIZE_RULES +
+    "\nวันนี้: " + today + " | Round " + (roundNum + 1) + "/3\n" +
+    "Focus: " + focusMode.label + " — " + focusMode.lens + "\n\n" +
+
+    "═══ Market Context ═══\n" +
+    "SPY=" + spyP + " | QQQ=" + qqqP + " | VIX=" + vixP + " | DXY=" + dxyP + "\n\n" +
+
+    "═══ Layer 1: Screener Candidates ═══\n" +
+    candidatesText + "\n\n" +
+
+    "═══ Layer 2: News RSS ═══\n" +
+    newsLines.map(function(n,i){return (i+1)+". "+n;}).join("\n") + "\n\n" +
+
+    "═══ Layer 3: Reddit Sentiment ═══\n" +
+    redditText + "\n\n" +
+
+    "═══ Layer 4: Earnings Calendar ═══\n" +
+    earningsText + "\n\n" +
+
+    "═══ เกณฑ์คัด ═══\n" +
+    "✅ Volume >1.5×avg + momentum + support/resistance เอื้อ\n" +
+    "✅ Fundamental แข็ง: กำไรโต debt ต่ำ FCF บวก\n" +
+    "✅ Catalyst ชัดใน 7-14 วัน\n" +
+    "✅ Reddit buzz + sentiment บวก\n" +
+    "✅ R/R อย่างน้อย 1:2\n" +
+    "❌ ตัดออก: MCap<$1B, คดี/สอบสวน, กำไรติดลบ, sentiment ลบแรง\n\n" +
+
+    "คัดหุ้น 7 ตัว อ้างอิงจากข้อมูลจริงทุก layer ห้ามเขียนทั่วไป\n\n" +
+
+    "กฎการจัดรูปแบบ (สำคัญมาก):\n" +
+    "- แต่ละข้อต้องมีบรรทัดว่าง 1 บรรทัดก่อนเริ่ม และหลังจบ ⏱️ Hold\n" +
+    "- ห้ามเขียนต่อเนื่องกัน ต้องเว้นบรรทัดว่างระหว่างข้อเสมอ\n" +
+    "- ห้ามใช้ # ** __\n\n" +
+
+    "รูปแบบ (ทำ 7 ครั้ง):\n\n" +
+    "[เลข]. [SYMBOL] — [ชื่อบริษัท]\n" +
+    "🟢 Entry Zone: $[X] – $[Y]\n" +
+    "🎯 Target: $[Z] (+X%)\n" +
+    "🛑 Stop-Loss: $[W] (-X%)\n" +
+    "📐 R/R: 1:[N]\n" +
+    "💡 Why Now: [เหตุผลจาก Screener+News+Reddit จริงๆ]\n" +
+    "📅 Catalyst: [event+วันที่ หรือ Reddit buzz]\n" +
+    "🤖 Reddit: [Bullish/Bearish/Mixed + posts + score]\n" +
+    "⏱️ Hold: [X-Y วัน]\n" +
+    "---\n\n" +
+
+    "สรุปท้าย:\n" +
+    "📊 ตลาดเอื้อ Swing ไหม: [VIX + momentum + WSB hot]\n" +
+    "⚠️ ความเสี่ยงหลัก: [2 ข้อ]\n\n" +
+    "ห้ามแต่งราคาหรือตัวเลขที่ไม่มีในข้อมูล ลงท้าย คะ/ค่ะ"
+  );
+}
+
+// ─── textToFlexBlocksSwing — แปลง AI text เป็น Flex blocks
+// แปลง --- เป็น separator line คั่นระหว่างแต่ละหุ้น
+function textToFlexBlocksSwing(text) {
+  if (!text) return [];
+  var blocks = [];
+  // split ด้วย --- ก่อน (คั่นระหว่างข้อ)
+  var sections = text.split(/\n---\n|\n---$/);
+  sections.forEach(function(section, idx) {
+    // แต่ละ section แปลงเป็น text blocks ปกติ
+    var trimmed = section.trim();
+    if (!trimmed) return;
+    // split ด้วย \n\n ภายใน section
+    trimmed.split(/\n\n+/).forEach(function(chunk) {
+      var c = chunk.trim();
+      if (!c) return;
+      blocks.push({
+        "type": "text", "text": c,
+        "size": "sm", "color": "#333333",
+        "wrap": true, "margin": "sm", "lineSpacing": "6px"
+      });
+    });
+    // เพิ่ม separator หลังแต่ละหุ้น (ยกเว้นอันสุดท้าย)
+    if (idx < sections.length - 1) {
+      blocks.push({
+        "type": "separator", "margin": "lg", "color": "#E8EAF6"
+      });
+    }
+  });
+  return blocks.filter(function(b) {
+    return b.type === "separator" || (b.text && b.text.trim() !== "");
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  MAIN: buildSwingTradeFlex
+// ═══════════════════════════════════════════════════════════════
+
+function buildSwingTradeFlex(userId) {
+  try {
+    var roundNum  = getSwingRound(userId || "global");
+    var focusMode = SWING_FOCUS_MODES[roundNum];
+
+    // ── ดึงข้อมูลทุก Layer ──
+    var candidates     = fetchSwingCandidates();
+    var candidatesText = formatCandidatesText(candidates);
+    var topSymbols     = candidates.slice(0, 10).map(function(c) { return c.symbol; });
+
+    var newsLines    = fetchSwingNewsRSS(topSymbols);
+    var reddit       = fetchCombinedReddit(topSymbols);
+    var redditText   = formatCombinedRedditForPrompt(reddit, topSymbols);
+    var earningsText = fetchEarningsForSwing();
+
+    // ── AI ──
+    var aiResult = callOpenRouterBrief(
+      buildSwingPrompt(focusMode, roundNum,
+                       candidatesText, newsLines, redditText, earningsText)
+    );
+
+    // แกะ tickers จาก AI
+    var picked = [];
+    (aiResult.match(/^\d+\.\s+([A-Z]{1,5})/gm) || []).forEach(function(m) {
+      var t = m.replace(/^\d+\.\s+/, "").trim();
+      if (t && picked.indexOf(t) === -1) picked.push(t);
+    });
+    if (picked.length === 0) picked = topSymbols.slice(0, 5);
+
+    var now       = new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" });
+    var rl        = "Round " + (roundNum + 1) + " / 3";
+    var nextFocus = SWING_FOCUS_MODES[(roundNum + 1) % SWING_FOCUS_MODES.length];
+    var hcList    = [
+      { bg: "#1A237E", sub: "#9FA8DA" },
+      { bg: "#4A148C", sub: "#CE93D8" },
+      { bg: "#1B5E20", sub: "#A5D6A7" }
+    ];
+    var hc = hcList[roundNum];
+
+    // CSE status
+    var cseActive = reddit.cse.available;
+
+    // Reddit summary rows สำหรับแสดงใน body
+    var redditRows = topSymbols.slice(0, 6).map(function(sym) {
+      var r = (reddit.direct.bySymbol || {})[sym];
+      if (!r || r.posts.length === 0) return null;
+      var sc = r.sentiment.includes("Bullish") ? "#2E7D32"
+             : r.sentiment.includes("Bearish") ? "#C62828" : "#F57F17";
+      return {
+        "type": "box", "layout": "horizontal", "margin": "xs",
+        "contents": [
+          { "type": "text", "text": sym, "size": "xs", "weight": "bold", "color": "#333333", "flex": 1 },
+          { "type": "text", "text": r.sentiment, "size": "xs", "color": sc, "flex": 2 },
+          { "type": "text", "text": r.posts.length + "p ↑" + r.totalScore,
+            "size": "xxs", "color": "#888888", "align": "end", "flex": 2 }
+        ]
+      };
+    }).filter(Boolean);
+
+    var qrItems = picked.slice(0, 5).map(function(s) {
+      return { "type": "action", "action": { "type": "message", "label": "📊 " + s, "text": s } };
+    });
+    qrItems.push({ "type": "action", "action": { "type": "message", "label": "🔄 ถัดไป", "text": "swing" } });
+    qrItems.push({ "type": "action", "action": { "type": "message", "label": "🏠 เมนู",  "text": "เมนู" } });
+
+    return {
+      "type": "flex",
+      "altText": "📈 Swing " + rl + " | " + focusMode.label,
+      "quickReply": { "items": qrItems },
+      "contents": {
+        "type": "bubble", "size": "giga",
+
+        "header": {
+          "type": "box", "layout": "vertical",
+          "backgroundColor": hc.bg, "paddingAll": "18px",
+          "contents": [
+            {
+              "type": "box", "layout": "horizontal",
+              "contents": [
+                {
+                  "type": "box", "layout": "vertical", "flex": 5,
+                  "contents": [
+                    { "type": "text", "text": "📈 SWING TRADE", "weight": "bold", "size": "lg", "color": "#FFFFFF" },
+                    { "type": "text", "text": focusMode.label, "size": "sm", "weight": "bold", "color": hc.sub, "margin": "xs" },
+                    { "type": "text", "text": focusMode.sub, "size": "xxs", "color": hc.sub, "wrap": true, "margin": "xs" }
+                  ]
+                },
+                {
+                  "type": "box", "layout": "vertical", "flex": 2, "alignItems": "flex-end",
+                  "contents": [
+                    { "type": "text", "text": rl, "size": "sm", "weight": "bold", "color": "#FFFFFF", "align": "end" },
+                    { "type": "text", "text": now, "size": "xxs", "color": hc.sub, "align": "end", "margin": "xs" }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "box", "layout": "horizontal", "margin": "sm", "spacing": "sm",
+              "contents": [
+                { "type": "box", "layout": "vertical", "flex": 1,
+                  "backgroundColor": "#FFFFFF22", "cornerRadius": "20px", "paddingAll": "4px",
+                  "contents": [{ "type": "text", "text": "📊 ราคาสด", "size": "xxs", "color": "#FFFFFF", "align": "center" }] },
+                { "type": "box", "layout": "vertical", "flex": 1,
+                  "backgroundColor": "#FFFFFF22", "cornerRadius": "20px", "paddingAll": "4px",
+                  "contents": [{ "type": "text", "text": "📰 ข่าว", "size": "xxs", "color": "#FFFFFF", "align": "center" }] },
+                { "type": "box", "layout": "vertical", "flex": 1,
+                  "backgroundColor": "#FFFFFF33", "cornerRadius": "20px", "paddingAll": "4px",
+                  "contents": [{ "type": "text", "text": "🤖 Sentiment", "size": "xxs", "color": "#FFFFFF", "align": "center" }] },
+                { "type": "box", "layout": "vertical", "flex": 1,
+                  "backgroundColor": "#FFFFFF22", "cornerRadius": "20px", "paddingAll": "4px",
+                  "contents": [{ "type": "text", "text": "📅 Catalyst", "size": "xxs", "color": "#FFFFFF", "align": "center" }] }
+              ]
+            }
+          ]
+        },
+
+        "body": {
+          "type": "box", "layout": "vertical", "paddingAll": "14px", "spacing": "none",
+          "contents": textToFlexBlocksSwing(aiResult).concat([
+
+            { "type": "separator", "margin": "lg", "color": "#E0E0E0" },
+
+            // Reddit summary
+            {
+              "type": "box", "layout": "horizontal",
+              "backgroundColor": "#FFF8E1", "cornerRadius": "8px", "paddingAll": "8px", "margin": "md",
+              "contents": [{
+                "type": "text",
+                "text": "🤖 Community Sentiment",
+                "weight": "bold", "size": "sm", "color": "#E65100"
+              }]
+            },
+            redditRows.length > 0
+              ? { "type": "box", "layout": "vertical", "margin": "xs", "spacing": "xs", "contents": redditRows }
+              : { "type": "text", "text": "ไม่พบ posts ใน 7 วันนี้", "size": "xs", "color": "#AAAAAA", "margin": "sm" },
+
+            { "type": "separator", "margin": "md", "color": "#E0E0E0" },
+
+            // Next round
+            {
+              "type": "box", "layout": "vertical",
+              "backgroundColor": "#F3E5F5", "cornerRadius": "10px", "paddingAll": "10px", "margin": "md",
+              "contents": [
+                { "type": "text", "text": "🔄 Round ถัดไป: " + nextFocus.label, "size": "xs", "color": "#6A1B9A", "weight": "bold" },
+                { "type": "text", "text": "พิมพ์ 'swing' เพื่อดูรอบถัดไป (3 รอบวนกลับ) 🔁",
+                  "size": "xxs", "color": "#888888", "margin": "xs", "wrap": true }
+              ]
+            },
+            {
+              "type": "box", "layout": "vertical",
+              "backgroundColor": "#E8EAF6", "cornerRadius": "10px", "paddingAll": "10px", "margin": "sm",
+              "contents": [{
+                "type": "text",
+                "text": "💡 กดชื่อหุ้นใน Quick Reply เพื่อวิเคราะห์เจาะลึกได้เลยค่า ✨",
+                "size": "xs", "color": "#1A237E", "align": "center", "wrap": true
+              }]
+            }
+          ].filter(Boolean))
+        },
+
+        "footer": {
+          "type": "box", "layout": "vertical", "backgroundColor": "#F5F5F5", "paddingAll": "10px",
+          "contents": [{
+            "type": "text",
+            "text": "⚠️ AI คัดสดทุกครั้ง ข้อมูลจากหลายแหล่ง | ไม่ใช่คำแนะนำลงทุน",
+            "size": "xxs", "color": "#AAAAAA", "align": "center", "wrap": true
+          }]
+        }
+      }
+    };
+  } catch(e) {
+    console.error("buildSwingTradeFlex Error: " + e.toString());
+    return buildTextWithQuickReply("ขออภัยค่า ระบบ Swing Trade ขัดข้องชั่วคราว 😢 ลองใหม่นะคะ 🙏");
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  SINGLE SWING ANALYSIS — "swing NVDA" / "swing NVTS"
+//  วิเคราะห์หุ้นเดี่ยว ละเอียด พร้อม Reddit + News + ราคาสด
+// ═══════════════════════════════════════════════════════════════
+
+function buildSingleSwingFlex(symbol) {
+  try {
+    symbol = symbol.toUpperCase().trim();
+
+    // ── ดึงข้อมูลสด ──
+    var priceRaw  = fetchBriefPrice(symbol);
+    var newsText  = fetchRealTimeMarketNews();
+    var analystData = fetchAnalystData(symbol);
+
+    // ดึงราคา + % change จาก Yahoo
+    var priceData  = null;
+    var priceDisp  = "N/A";
+    var changePct  = 0;
+    var changeSign = "";
+    try {
+      var meta = JSON.parse(
+        UrlFetchApp.fetch(
+          "https://query1.finance.yahoo.com/v8/finance/chart/" +
+          encodeURIComponent(symbol) + "?interval=1d&range=5d",
+          { muteHttpExceptions: true, deadline: 8 }
+        ).getContentText()
+      )?.chart?.result?.[0]?.meta;
+      if (meta?.regularMarketPrice) {
+        var price = meta.regularMarketPrice;
+        var prev  = meta.previousClose || meta.chartPreviousClose || price;
+        changePct  = prev > 0 ? ((price - prev) / prev * 100) : 0;
+        changeSign = changePct >= 0 ? "+" : "";
+        priceDisp  = "$" + price.toFixed(2) + " (" + changeSign + changePct.toFixed(2) + "%)";
+        priceData  = { price: price, prev: prev, changePct: changePct };
+      }
+    } catch(e) {}
+
+    // ── Reddit ──
+    var redditResult = fetchRedditDirect([symbol]);
+    var redditInfo   = redditResult.bySymbol[symbol] || { posts: [], totalScore: 0, sentiment: "N/A" };
+
+    // ── News ที่เกี่ยวกับ symbol โดยตรง ──
+    var symbolNews = [];
+    try {
+      var rss = UrlFetchApp.fetch(
+        "https://finance.yahoo.com/rss/headline?s=" + encodeURIComponent(symbol),
+        { muteHttpExceptions: true, deadline: 6 }
+      ).getContentText();
+      var items = rss.match(/<item>[\s\S]*?<\/item>/g) || [];
+      items.slice(0, 5).forEach(function(block) {
+        var cd = block.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/);
+        var pm = block.match(/<title>(.*?)<\/title>/);
+        var t  = cd ? cd[1].trim() : pm ? pm[1].replace(/&amp;/g,"&").trim() : "";
+        if (t) symbolNews.push(t);
+      });
+    } catch(e) {}
+
+    // ── Earnings ──
+    var earningsStr = "";
+    try {
+      var cal = JSON.parse(
+        UrlFetchApp.fetch(
+          "https://query1.finance.yahoo.com/v10/finance/quoteSummary/" +
+          encodeURIComponent(symbol) + "?modules=calendarEvents",
+          { muteHttpExceptions: true, deadline: 6 }
+        ).getContentText()
+      )?.quoteSummary?.result?.[0]?.calendarEvents;
+      if (cal?.earnings?.earningsDate?.length > 0) {
+        var fmt  = cal.earnings.earningsDate[0]?.fmt || "";
+        var days = Math.round((new Date(fmt) - new Date()) / 86400000);
+        if (fmt && days >= -2 && days <= 30) {
+          earningsStr = "Earnings: " + fmt + " (อีก " + days + " วัน)";
+        }
+      }
+    } catch(e) {}
+
+    // ── Build AI Prompt ──
+    var redditSummary = redditInfo.posts.length > 0
+      ? "Sentiment: " + redditInfo.sentiment + " | " + redditInfo.posts.length + " posts | score:" + redditInfo.totalScore + "\n" +
+        redditInfo.posts.slice(0, 3).map(function(p) {
+          return "  • [" + p.sub + "] " + p.title.substring(0, 80) + " (↑" + p.score + ")";
+        }).join("\n")
+      : "ไม่พบ Reddit posts ใน 7 วันนี้";
+
+    var analystSummary = analystData && analystData.targetMean
+      ? "Consensus: " + (analystData.recKey || "N/A") +
+        " | Target Mean: $" + analystData.targetMean.toFixed(2) +
+        " | Analysts: " + analystData.numAnalysts + " คน"
+      : "ไม่มีข้อมูล Analyst";
+
+    var prompt =
+      "คุณคือ Bestie นักวิเคราะห์ Swing Trade มืออาชีพ ตอบภาษาไทย เป็นกันเอง\n" +
+      HUMANIZE_RULES +
+      "\nวิเคราะห์ Swing Trade สำหรับ " + symbol + "\n\n" +
+      "ราคาล่าสุด: " + priceDisp + "\n" +
+      (earningsStr ? earningsStr + "\n" : "") +
+      "\nAnalyst: " + analystSummary + "\n\n" +
+      "Reddit Community:\n" + redditSummary + "\n\n" +
+      "ข่าวล่าสุดของ " + symbol + ":\n" +
+      (symbolNews.length > 0 ? symbolNews.map(function(n,i){return (i+1)+". "+n;}).join("\n") : "ไม่พบข่าวล่าสุด") + "\n\n" +
+      "ข่าวตลาดรวม (5 อันดับ):\n" +
+      newsText.split("\n").slice(0, 5).join("\n") + "\n\n" +
+
+      "เขียน Swing Trade Plan ให้ครบตามรูปแบบนี้เป๊ะๆ (ห้ามใช้ # ** __):\n\n" +
+
+      "📈 Swing Trade Plan: " + symbol + "\n" +
+      "💰 ราคาล่าสุด: " + priceDisp + "\n\n" +
+
+      "1. Momentum & Catalyst\n" +
+      "[อธิบาย catalyst ที่ทำให้ราคาขยับ เชื่อมกับข่าวและ Reddit จริงๆ 2-3 ประโยค]\n\n" +
+
+      "2. Entry Zone\n" +
+      "[ราคาที่แนะนำให้เข้าซื้อ พร้อมเหตุผล technical เช่น EMA20 support, Fib level]\n\n" +
+
+      "3. Target (3-5 วัน)\n" +
+      "[ราคาเป้าหมาย + % กำไร + เหตุผล เช่น resistance level, analyst target]\n\n" +
+
+      "4. Stop-Loss\n" +
+      "[ราคา stop-loss + % ขาดทุน + เหตุผล เช่น ต่ำกว่า support สำคัญ]\n\n" +
+
+      "5. Reddit & Community Sentiment\n" +
+      "[สรุป sentiment จาก Reddit posts ที่ได้รับ ถ้าไม่พบให้บอก N/A]\n\n" +
+
+      "6. คำเตือน\n" +
+      "[ความเสี่ยงเฉพาะของหุ้นนี้ + แนะนำขนาด position]\n\n" +
+
+      "ห้ามแต่งราคาหรือตัวเลขที่ไม่มีในข้อมูล ลงท้าย คะ/ค่ะ";
+
+    var aiResult = callOpenRouterBrief(prompt);
+
+    // ── Build Flex ──
+    var now        = new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" });
+    var priceColor = changePct >= 0 ? "#2ECC71" : "#E74C3C";
+    var headerBg   = changePct >= 5 ? "#1B5E20"
+                   : changePct >= 0 ? "#1A237E"
+                   : changePct >= -3 ? "#E65100"
+                   : "#B71C1C";
+
+    // Reddit sentiment badge
+    var sentColor = redditInfo.sentiment.includes("Bullish") ? "#2E7D32"
+                  : redditInfo.sentiment.includes("Bearish") ? "#C62828" : "#F57F17";
+
+    return {
+      "type": "flex",
+      "altText": "📈 Swing Trade Plan: " + symbol + " | " + priceDisp,
+      "quickReply": {
+        "items": [
+          { "type": "action", "action": { "type": "message", "label": "🎯 เจาะลึก", "text": "เจาะลึก " + symbol } },
+          { "type": "action", "action": { "type": "message", "label": "⭐ บันทึก",  "text": "บันทึก " + symbol } },
+          { "type": "action", "action": { "type": "message", "label": "📈 Swing อื่น", "text": "swing" } },
+          { "type": "action", "action": { "type": "message", "label": "🏠 เมนู",    "text": "เมนู" } }
+        ]
+      },
+      "contents": {
+        "type": "bubble", "size": "giga",
+
+        "header": {
+          "type": "box", "layout": "vertical",
+          "backgroundColor": headerBg, "paddingAll": "18px",
+          "contents": [
+            {
+              "type": "box", "layout": "horizontal",
+              "contents": [
+                {
+                  "type": "box", "layout": "vertical", "flex": 4,
+                  "contents": [
+                    { "type": "text", "text": "📈 Swing Trade Plan", "size": "xs", "color": "#FFFFFF99", "weight": "bold" },
+                    { "type": "text", "text": symbol, "size": "xxl", "weight": "bold", "color": "#FFFFFF", "margin": "xs" },
+                    { "type": "text", "text": priceDisp, "size": "sm", "weight": "bold", "color": priceColor, "margin": "xs" }
+                  ]
+                },
+                {
+                  "type": "box", "layout": "vertical", "flex": 2, "alignItems": "flex-end",
+                  "contents": [
+                    redditInfo.posts.length > 0 ? {
+                      "type": "box", "layout": "vertical",
+                      "backgroundColor": "#FFFFFF22", "cornerRadius": "20px", "paddingAll": "6px",
+                      "contents": [{ "type": "text", "text": "🤖 " + redditInfo.sentiment,
+                        "size": "xxs", "color": "#FFFFFF", "align": "center" }]
+                    } : null,
+                    earningsStr ? {
+                      "type": "box", "layout": "vertical", "margin": "xs",
+                      "backgroundColor": "#FFFFFF22", "cornerRadius": "20px", "paddingAll": "6px",
+                      "contents": [{ "type": "text", "text": "📅 " + earningsStr,
+                        "size": "xxs", "color": "#FFFFFF", "wrap": true, "align": "center" }]
+                    } : null,
+                    { "type": "text", "text": now, "size": "xxs", "color": "#FFFFFF99", "align": "end", "margin": "sm" }
+                  ].filter(Boolean)
+                }
+              ]
+            }
+          ]
+        },
+
+        "body": {
+          "type": "box", "layout": "vertical", "paddingAll": "14px", "spacing": "none",
+          "contents": textToFlexBlocksSwing(aiResult)
+        },
+
+        "footer": {
+          "type": "box", "layout": "vertical", "backgroundColor": "#F5F5F5", "paddingAll": "10px",
+          "contents": [
+            { "type": "text", "text": "⚠️ วิเคราะห์โดย Bestie AI | ไม่ใช่คำแนะนำการลงทุน",
+              "size": "xxs", "color": "#AAAAAA", "align": "center" }
+          ]
+        }
+      }
+    };
+  } catch(e) {
+    console.error("buildSingleSwingFlex Error: " + e.toString());
+    return buildTextWithQuickReply("ขออภัยค่า วิเคราะห์ " + symbol + " ไม่ได้ในขณะนี้ 😢");
+  }
+}
  
+// ═══════════════════════════════════════════════════════════════
+//  HELP / COMMAND MENU
+//  พิมพ์: คำสั่ง / command / helpme / วิธีใช้
+// ═══════════════════════════════════════════════════════════════
+ 
+var COMMAND_LIST = [
+  // ── ตลาด & ข่าว ──
+  { emoji: "📊", cmd: "ตลาดวันนี้",          alias: "รู้ยัง? ตลาดหุ้นวันนี้มีอะไร",            desc: "ข่าว + Trending + Most Active รวมครบ" },
+  { emoji: "📰", cmd: "สรุปข่าว",            alias: "ข่าววันนี้",              desc: "สรุปข่าวตลาดหุ้น US พร้อม World Indices" },
+  // ── หุ้น US ──
+  { emoji: "🇺🇸", cmd: "แนะนำหุ้นอเมริกา",   alias: "แนะนำหุ้นอเมริกา",       desc: "หุ้น US น่าสนใจ 6 ตัว หลายหมวด" },
+  { emoji: "💹", cmd: "แนะนำกลุ่มหุ้นน่าสนใจ", alias: "กลุ่มหุ้น",             desc: "เลือก Sector ที่อยากลงทุน (AI, เทค, ยา ฯลฯ)" },
+  { emoji: "📈", cmd: "swing",               alias: "สวิง / Swing Trade",      desc: "Swing Trade 3-5 วัน 3 รอบ ชุดละ 7 ตัว วนซ้ำ" },
+  // ── ทองคำ ──
+  { emoji: "🥇", cmd: "ทองคำ",              alias: "gold / XAU",               desc: "วิเคราะห์ทองคำ XAU/USD สด + ข่าว" },
+  { emoji: "📊", cmd: "แนวรับแนวต้านทอง",    alias: "sr / pivot",              desc: "แนวรับแนวต้าน Pivot Point สด" },
+  { emoji: "⚡", cmd: "Sig",                 alias: "สัญญาณทอง",               desc: "Sniper Signal ทองคำ RSI+EMA+ATR (ระบบทดลอง)" },
+  { emoji: "🇹🇭", cmd: "ราคาทองไทย",         alias: "ทองไทย",                  desc: "ราคาทองคำแท่งไทย 96.5% จากสมาคมค้าทองคำ" },
+  // ── คริปโต & ETF ──
+  { emoji: "🪙", cmd: "แนะนำคริปโต",         alias: "crypto / bitcoin",        desc: "ภาพรวมตลาดคริปโต + 5 Coin น่าสนใจ" },
+  { emoji: "🏦", cmd: "ETF น่าสนใจ",         alias: "etf / กองทุน",            desc: "ETF หลากหลายหมวด เชื่อมสถานการณ์ตลาด" },
+  // ── Deep Analysis ──
+  { emoji: "🎯", cmd: "เจาะลึก [TICKER]",    alias: "เช่น: เจาะลึก NVDA",     desc: "Deep Analysis 7 Prompts + Backtest + Trade Plan" },
+  { emoji: "📊", cmd: "[TICKER]",             alias: "เช่น: AAPL / NVDA",      desc: "วิเคราะห์หุ้นทันที เลือก ทั่วไป หรือ เจาะลึก" },
+  // ── Watchlist ──
+  { emoji: "⭐", cmd: "บันทึก [TICKER]",      alias: "เซฟ / save [TICKER]",    desc: "เพิ่มหุ้นในรายการโปรด (สูงสุด 20 ตัว)" },
+  { emoji: "🗑️", cmd: "ลบ [TICKER]",          alias: "remove [TICKER]",        desc: "ลบหุ้นออกจากรายการโปรด" },
+  { emoji: "📋", cmd: "รายการโปรด",           alias: "watchlist / พอร์ต",      desc: "ดูราคาสดหุ้นทุกตัวในรายการโปรด" },
+  // ── วางแผนการเงิน ──
+  { emoji: "🏖️", cmd: "วางแผนเกษียณ",        alias: "retirement",             desc: "เปิด Retirement Planner คำนวณเป้าหมายเกษียณ" },
+  // ── Help ──
+  { emoji: "📋", cmd: "คำสั่ง",              alias: "command / helpme",        desc: "ดูรายการคำสั่งทั้งหมดนี้ค่า" },
+  { emoji: "🏠", cmd: "เมนู",               alias: "menu / hi / สวัสดี",      desc: "เปิดเมนูหลักพร้อม Quick Reply ทุกฟีเจอร์" }
+];
+ 
+// ─── buildCommandMenuFlex ──────────────────────────────────────
+function buildCommandMenuFlex() {
+  var now = new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" });
+ 
+  // แบ่งกลุ่มคำสั่ง
+  var groups = [
+    { title: "📊 ตลาด & ข่าว",    color: "#1A237E", bg: "#E8EAF6", items: COMMAND_LIST.slice(0, 2) },
+    { title: "🇺🇸 หุ้น US",        color: "#1B5E20", bg: "#E8F5E9", items: COMMAND_LIST.slice(2, 5) },
+    { title: "🥇 ทองคำ",          color: "#E65100", bg: "#FBE9E7", items: COMMAND_LIST.slice(5, 9) },
+    { title: "🪙 คริปโต & ETF",   color: "#F57F17", bg: "#FFF8E1", items: COMMAND_LIST.slice(9, 11) },
+    { title: "🎯 Deep Analysis",   color: "#880E4F", bg: "#FCE4EC", items: COMMAND_LIST.slice(11, 13) },
+    { title: "⭐ Watchlist",       color: "#4A148C", bg: "#F3E5F5", items: COMMAND_LIST.slice(13, 16) },
+    { title: "🏖️ วางแผน & Help",  color: "#BF360C", bg: "#FFF3E0", items: COMMAND_LIST.slice(16) }
+  ];
+ 
+  // สร้าง body contents จากทุก group
+  var bodyContents = [];
+  groups.forEach(function(group) {
+    // header
+    bodyContents.push({
+      "type": "box", "layout": "horizontal",
+      "backgroundColor": group.bg, "cornerRadius": "8px",
+      "paddingAll": "8px", "margin": "md",
+      "contents": [{ "type": "text", "text": group.title, "weight": "bold", "size": "sm", "color": group.color }]
+    });
+    // items
+    group.items.forEach(function(item) {
+      bodyContents.push({
+        "type": "box", "layout": "vertical",
+        "paddingStart": "8px", "paddingEnd": "8px",
+        "paddingTop": "6px", "paddingBottom": "6px",
+        "action": { "type": "message", "label": item.cmd, "text": item.cmd },
+        "contents": [
+          {
+            "type": "box", "layout": "horizontal",
+            "contents": [
+              { "type": "text", "text": item.emoji + " " + item.cmd, "size": "sm", "weight": "bold", "color": group.color, "flex": 3, "wrap": true },
+              { "type": "text", "text": "›", "size": "md", "color": "#CCCCCC", "align": "end", "flex": 0 }
+            ]
+          },
+          {
+            "type": "box", "layout": "horizontal", "margin": "xs",
+            "contents": [
+              { "type": "text", "text": item.desc, "size": "xs", "color": "#888888", "flex": 3, "wrap": true },
+              item.alias ? { "type": "text", "text": "(" + item.alias + ")", "size": "xxs", "color": "#BBBBBB", "align": "end", "flex": 2, "wrap": true } : null
+            ].filter(Boolean)
+          }
+        ]
+      });
+    });
+  });
+ 
+  return {
+    "type": "flex",
+    "altText": "📋 Bestie Bot US — รายการคำสั่งทั้งหมด กดแล้วใช้ได้เลยค่า!",
+    "quickReply": {
+      "items": [
+        { "type": "action", "action": { "type": "message", "label": "📈 Swing", "text": "swing" } },
+        { "type": "action", "action": { "type": "message", "label": "🇺🇸 หุ้น US", "text": "แนะนำหุ้นอเมริกา" } },
+        { "type": "action", "action": { "type": "message", "label": "🥇 ทองคำ", "text": "ทองคำ" } },
+        { "type": "action", "action": { "type": "message", "label": "📊 ตลาดวันนี้", "text": "ตลาดวันนี้" } },
+        { "type": "action", "action": { "type": "message", "label": "🏠 เมนู", "text": "เมนู" } }
+      ]
+    },
+    "contents": {
+      "type": "bubble", "size": "giga",
+      "header": {
+        "type": "box", "layout": "vertical",
+        "backgroundColor": "#FF6B9D", "paddingAll": "18px",
+        "contents": [
+          { "type": "text", "text": "📋 รายการคำสั่งทั้งหมด", "weight": "bold", "size": "xl", "color": "#FFFFFF" },
+          { "type": "text", "text": "กดคำสั่งไหนก็ใช้งานได้เลยค่า ✨", "size": "xs", "color": "#FFEBF0", "margin": "xs" },
+          { "type": "text", "text": now, "size": "xxs", "color": "#FFEBF0", "margin": "xs" }
+        ]
+      },
+      "body": {
+        "type": "box", "layout": "vertical", "paddingAll": "12px",
+        "contents": bodyContents.concat([
+          { "type": "separator", "margin": "lg", "color": "#E0E0E0" },
+          {
+            "type": "box", "layout": "vertical",
+            "backgroundColor": "#E8EAF6", "cornerRadius": "10px",
+            "paddingAll": "12px", "margin": "lg",
+            "contents": [
+              { "type": "text", "text": "💡 Tips", "weight": "bold", "size": "sm", "color": "#1A237E" },
+              { "type": "text", "text": "• พิมพ์ Ticker ตรงๆ เช่น NVDA, AAPL → ขึ้น Mode Selector", "size": "xs", "color": "#5C6BC0", "margin": "xs", "wrap": true },
+              { "type": "text", "text": "• เจาะลึก NVDA → Deep Analysis 7 Prompts ครบ", "size": "xs", "color": "#5C6BC0", "margin": "xs", "wrap": true },
+              { "type": "text", "text": "• swing → Swing Trade ชุดถัดไป (3 รอบวนกลับ)", "size": "xs", "color": "#5C6BC0", "margin": "xs", "wrap": true },
+              { "type": "text", "text": "• บันทึก NVDA → เพิ่มใน Watchlist ดูราคาสดได้", "size": "xs", "color": "#5C6BC0", "margin": "xs", "wrap": true }
+            ]
+          }
+        ])
+      },
+      "footer": {
+        "type": "box", "layout": "vertical",
+        "backgroundColor": "#F5F5F5", "paddingAll": "10px",
+        "contents": [
+          { "type": "text", "text": "⚠️ ข้อมูลเพื่อความรู้ ไม่ใช่คำแนะนำการลงทุน", "size": "xxs", "color": "#AAAAAA", "align": "center" }
+        ]
+      }
+    }
+  };
+}
  
